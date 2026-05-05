@@ -3,16 +3,6 @@
  * To avoid circular dependency.
  */
 
-import type {
-  AzureBlobStorageConfig,
-  BoxConfig,
-  GoogleDriveConfig,
-  KoofrConfig,
-  OnedriveFullConfig,
-  PCloudConfig,
-  ProConfig,
-  YandexDiskConfig,
-} from "../pro/src/baseTypesPro";
 import type { LangTypeAndAuto } from "./i18n";
 
 declare global {
@@ -32,18 +22,11 @@ export type SUPPORTED_SERVICES_TYPE =
   | "webdav"
   | "dropbox"
   | "onedrive"
-  | "onedrivefull"
-  | "webdis"
-  | "googledrive"
-  | "box"
-  | "pcloud"
-  | "yandexdisk"
-  | "koofr"
-  | "azureblobstorage";
+  | "webdis";
 
 export type SUPPORTED_SERVICES_TYPE_WITH_REMOTE_BASE_DIR = Exclude<
   SUPPORTED_SERVICES_TYPE,
-  "s3" | "azureblobstorage"
+  "s3"
 >;
 
 export interface S3Config {
@@ -150,14 +133,7 @@ export interface RemotelySavePluginSettings {
   webdav: WebdavConfig;
   dropbox: DropboxConfig;
   onedrive: OnedriveConfig;
-  onedrivefull: OnedriveFullConfig;
   webdis: WebdisConfig;
-  googledrive: GoogleDriveConfig;
-  box: BoxConfig;
-  pcloud: PCloudConfig;
-  yandexdisk: YandexDiskConfig;
-  koofr: KoofrConfig;
-  azureblobstorage: AzureBlobStorageConfig;
 
   password: string;
   serviceType: SUPPORTED_SERVICES_TYPE;
@@ -189,8 +165,6 @@ export interface RemotelySavePluginSettings {
   encryptionMethod?: CipherMethodType;
 
   profiler?: ProfilerConfig;
-
-  pro?: ProConfig;
 
   /**
    * @deprecated
@@ -232,8 +206,7 @@ export type EmptyFolderCleanType = "skip" | "clean_both";
 
 export type ConflictActionType =
   | "keep_newer"
-  | "keep_larger"
-  | "smart_conflict";
+  | "keep_larger";
 
 export type DecisionTypeForMixedEntity =
   | "only_history"
@@ -248,11 +221,9 @@ export type DecisionTypeForMixedEntity =
   | "remote_is_deleted_thus_also_delete_local"
   | "conflict_created_then_keep_local"
   | "conflict_created_then_keep_remote"
-  | "conflict_created_then_smart_conflict"
   | "conflict_created_then_do_nothing"
   | "conflict_modified_then_keep_local"
   | "conflict_modified_then_keep_remote"
-  | "conflict_modified_then_smart_conflict"
   | "folder_existed_both_then_do_nothing"
   | "folder_existed_local_then_also_create_remote"
   | "folder_existed_remote_then_also_create_local"

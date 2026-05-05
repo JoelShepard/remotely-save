@@ -6,7 +6,6 @@ ep2(localforage);
 export type LocalForage = typeof localforage;
 import { nanoid } from "nanoid";
 
-import type { SyncPlanType } from "../pro/src/sync";
 import type { Entity, SUPPORTED_SERVICES_TYPE } from "./baseTypes";
 import { unixTimeToStr } from "./misc";
 
@@ -364,7 +363,7 @@ export const clearAllSyncMetaMappingByVault = async (
 
 export const insertSyncPlanRecordByVault = async (
   db: InternalDBs,
-  syncPlan: SyncPlanType,
+  syncPlan: Record<string, unknown>,
   vaultRandomID: string,
   remoteType: SUPPORTED_SERVICES_TYPE
 ) => {

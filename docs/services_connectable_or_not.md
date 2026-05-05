@@ -17,7 +17,6 @@ The list is for information purposes only.
 | [filebase](https://filebase.com/) | Yes | Yes | | |
 | QingStor 青云 | ? | ? | | |
 | [MinIO](https://min.io/) | Yes | Yes | | |
-| Azure Blob Storage | Yes (PRO) | | | Yes (PRO) |
 | [WsgiDAV](https://github.com/mar10/wsgidav) | Yes | | Yes | |
 | [Nginx `ngx_http_dav_module`](http://nginx.org/en/docs/http/ngx_http_dav_module.html) | Yes | | Yes | |
 | NextCloud | Yes | | Yes | |
@@ -26,18 +25,12 @@ The list is for information purposes only.
 | `rclone serve webdav` | Yes | | Yes | |
 | [Nutstore 坚果云](https://www.jianguoyun.com/) | Yes (partially) | | Yes (partially) | |
 | [TeraCLOUD](https://teracloud.jp/en/) | Yes | | Yes | |
-| Seafile | ? | | ? | ? |
 | Dropbox | Yes | | | Yes |
 | OneDrive for personal | Yes | | | Yes |
 | OneDrive for Business | Yes | | | ? |
-| Google Drive | Yes (with limitations) (PRO) | | | Yes (with limitations) (PRO) |
-| [Box](https://www.box.com/) | Yes (PRO) | | | Yes (PRO) |
-| [pCloud](https://www.pcloud.com/) | Yes (PRO) | | Yes | Yes (PRO) |
 | Google Cloud Storage | ? | | | May be possible but needs further development. |
-| Microsoft Azure Blob Storage | ? | | | May be possible but needs further development. |
 | [OpenStack Storage (Swift)](https://github.com/openstack/swift) | ? | | | May be possible but needs further development. |
 | <https://put.io/> | ? | | | ? |
-| Yandex Disk | Yes (PRO) | | Yes | Yes (PRO) |
 | FTP / FTPS | Never | | | Technically never possible to be implemented. |
 | SFTP | Never | | | Technically never possible to be implemented. |
 | Jottacloud | No | | | No. It seems that no open api is available. |

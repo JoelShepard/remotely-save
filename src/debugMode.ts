@@ -1,6 +1,5 @@
 import type { Vault } from "obsidian";
 
-import type { SyncPlanType } from "../pro/src/sync";
 import {
   DEFAULT_DEBUG_FOLDER,
   DEFAULT_PROFILER_RESULT_FILE_PREFIX,
@@ -17,8 +16,8 @@ const getSubsetOfSyncPlan = (x: string, onlyChange: boolean) => {
   if (!onlyChange) {
     return x;
   }
-  const y: SyncPlanType = JSON.parse(x);
-  const z: SyncPlanType = Object.fromEntries(
+  const y: Record<string, { change?: boolean }> = JSON.parse(x);
+  const z = Object.fromEntries(
     Object.entries(y).filter(([key, val]) => {
       if (key === "/$@meta") {
         return true;
