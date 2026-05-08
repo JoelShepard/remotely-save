@@ -8,7 +8,7 @@
 2. Search for and install **BRAT** (id: `obsidian42-brat`)
 3. Once installed, go to **Settings → BRAT**
 4. Click **Add Beta plugin**
-5. Enter the GitHub repository: `JoelShepard/remotely-save`
+5. Enter the GitHub repository: `JoelShepard/remote-sync`
 6. Click **Add Plugin** — BRAT will download the latest release
 7. Go to **Settings → Community Plugins**, refresh the list
 8. Find **Remote Sync** and click **Enable**

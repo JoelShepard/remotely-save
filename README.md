@@ -25,12 +25,12 @@ This plugin is not in the official community store (yet). Install using [BRAT](h
 
 1. Install **BRAT** from Obsidian's community plugins
 2. In BRAT settings, click **Add Beta plugin**
-3. Enter the repo: `JoelShepard/remotely-save`
+3. Enter the repo: `JoelShepard/remote-sync`
 4. Enable **Remote Sync** in the community plugins list
 
 ## Manual Install
 
-Download `main.js`, `manifest.json`, `styles.css` from the [latest release](https://github.com/JoelShepard/remotely-save/releases).
+Download `main.js`, `manifest.json`, `styles.css` from the [latest release](https://github.com/JoelShepard/remote-sync/releases).
 
 ## License
 

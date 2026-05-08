@@ -10,7 +10,7 @@
 
 ### How about OneDrive for Business?
 
-This plugin only works for "OneDrive for personal", and not works for "OneDrive for Business" (yet). See [#11](https://github.com/JoelShepard/remotely-save/issues/11) to further details.
+This plugin only works for "OneDrive for personal", and not works for "OneDrive for Business" (yet). See [#11](https://github.com/JoelShepard/remote-sync/issues/11) to further details.
 
 ### I cannot find `/Apps/remotely-save` folder
 
