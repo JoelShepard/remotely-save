@@ -1,0 +1,3 @@
+- [ ] Better debugging
+- [ ] Realtime Sync - rework the sync engine to work in real time with multiple devices
+- [ ] Rework of settings dashboard
