@@ -1,7 +1,6 @@
 // biome-ignore lint/suspicious/noShadowRestrictedNames: <explanation>
 import AggregateError from "aggregate-error";
 import cloneDeep from "lodash/cloneDeep";
-import throttle from "lodash/throttle";
 import { FileText, RefreshCcw, RotateCcw, createElement } from "lucide";
 import {
   Events,
@@ -34,31 +33,17 @@ import type { LangTypeAndAuto, TransItemType } from "./i18n";
 import { importQrCodeUri } from "./importExport";
 import {
   type InternalDBs,
-  addPendingDeletion,
   clearAllLoggerOutputRecords,
   clearExpiredSyncPlanRecords,
-  clearPendingDeletions,
   getLastFailedSyncTimeByVault,
   getLastSuccessSyncTimeByVault,
-  getPendingDeletions,
   prepareDBs,
   upsertLastFailedSyncTimeByVault,
   upsertLastSuccessSyncTimeByVault,
   upsertPluginVersionByVault,
 } from "./localdb";
 import { startLogInterception, stopLogInterception } from "./logManager";
-import {
-  METADATA_FILE_PATH,
-  addDeletionToMetadata,
-  cleanOldDeletions,
-  deserializeMetadataOnRemote,
-  serializeMetadataOnRemote,
-} from "./metadataOnRemote";
-import {
-  changeMobileStatusBar,
-  isHiddenPath,
-  isSpecialFolderNameToSkip,
-} from "./misc";
+import { changeMobileStatusBar } from "./misc";
 import { DEFAULT_PROFILER_CONFIG, Profiler } from "./profiler";
 import { RemotelySaveSettingTab } from "./settings/index";
 import { SyncAlgoV3Modal } from "./syncAlgoV3Notice";
@@ -158,14 +143,12 @@ export default class RemotelySavePlugin extends Plugin {
   settings!: RemotelySavePluginSettings;
   db!: InternalDBs;
   isSyncing!: boolean;
-  hasPendingSyncOnSave!: boolean;
   statusBarElement!: HTMLSpanElement;
   oauth2Info!: OAuth2Info;
   currLogLevel!: string;
   currSyncMsg?: string;
   syncRibbon?: HTMLElement;
   autoRunIntervalID?: number;
-  syncOnSaveIntervalID?: number;
   i18n!: I18n;
   vaultRandomID!: string;
   debugServerTemp?: string;
@@ -474,7 +457,6 @@ export default class RemotelySavePlugin extends Plugin {
 
     this.currSyncMsg = "";
     this.isSyncing = false;
-    this.hasPendingSyncOnSave = false;
 
     this.syncEvent = new Events();
 
@@ -685,23 +667,12 @@ export default class RemotelySavePlugin extends Plugin {
 
     this.enableCheckingFileStat();
 
-    this.app.workspace.onLayoutReady(() => {
-      this.registerEvent(
-        this.app.vault.on("delete", (file) => {
-          if (file.path) {
-            this._handleImmediateDeletion(file.path);
-          }
-        })
-      );
-    });
-
     if (!this.settings.agreeToUseSyncV3) {
       const syncAlgoV3Modal = new SyncAlgoV3Modal(this.app, this);
       syncAlgoV3Modal.open();
     } else {
       this.enableAutoSyncIfSet();
       this.enableInitSyncIfSet();
-      this.toggleSyncOnSaveIfSet();
     }
 
     // compare versions and read new versions
@@ -937,155 +908,6 @@ export default class RemotelySavePlugin extends Plugin {
           this.syncRun("auto_once_init");
         }, this.settings.initRunAfterMilliseconds);
       });
-    }
-  }
-
-  async _checkCurrFileModified(caller: "SYNC" | "FILE_CHANGES") {
-    console.debug(`inside checkCurrFileModified`);
-    const currentFile = this.app.workspace.getActiveFile();
-
-    if (currentFile) {
-      console.debug(`we have currentFile=${currentFile.path}`);
-      // get the last modified time of the current file
-      // if it has modified after lastSuccessSync
-      // then schedule a run for syncOnSaveAfterMilliseconds after it was modified
-      const lastModified = currentFile.stat.mtime;
-      const lastSuccessSyncMillis = await getLastSuccessSyncTimeByVault(
-        this.db,
-        this.vaultRandomID
-      );
-
-      console.debug(
-        `lastModified=${lastModified}, lastSuccessSyncMillis=${lastSuccessSyncMillis}`
-      );
-
-      if (
-        caller === "SYNC" ||
-        (caller === "FILE_CHANGES" &&
-          lastModified > (lastSuccessSyncMillis ?? 1))
-      ) {
-        console.debug(
-          `so lastModified > lastSuccessSyncMillis or it's called while syncing before`
-        );
-        console.debug(
-          `caller=${caller}, isSyncing=${this.isSyncing}, hasPendingSyncOnSave=${this.hasPendingSyncOnSave}`
-        );
-        if (this.isSyncing) {
-          this.hasPendingSyncOnSave = true;
-          // wait for next event
-          return;
-        } else {
-          if (this.hasPendingSyncOnSave || caller === "FILE_CHANGES") {
-            this.hasPendingSyncOnSave = false;
-            await this.syncRun("auto_sync_on_save");
-          }
-          return;
-        }
-      }
-    } else {
-      console.debug(`no currentFile here`);
-    }
-  }
-
-  async _handleImmediateDeletion(filePath: string) {
-    try {
-      if (filePath.endsWith("/")) {
-        return;
-      }
-
-      const key = filePath;
-
-      if (
-        isHiddenPath(key, true, true) ||
-        isSpecialFolderNameToSkip(key, undefined) ||
-        key === METADATA_FILE_PATH
-      ) {
-        return;
-      }
-
-      if (key.startsWith(this.app.vault.configDir)) {
-        return;
-      }
-
-      const profileID = this.getCurrProfileID();
-      await addPendingDeletion(this.db, this.vaultRandomID, profileID, key);
-
-      const fsRemote = getClient(
-        this.settings,
-        this.app.vault.getName(),
-        async () => await this.saveSettings()
-      );
-      const fsEncrypt = new FakeFsEncrypt(
-        fsRemote,
-        this.settings.password ?? "",
-        this.settings.encryptionMethod ?? "rclone-base64"
-      );
-
-      try {
-        await fsEncrypt.rmSingle(key);
-      } catch {}
-
-      try {
-        const raw = await fsEncrypt.readFile(METADATA_FILE_PATH);
-        const meta = deserializeMetadataOnRemote(raw);
-        const updated = addDeletionToMetadata(meta, key);
-        const cleaned = cleanOldDeletions(updated);
-        const json = serializeMetadataOnRemote(cleaned);
-        const encoder = new TextEncoder();
-        const content = encoder.encode(json).buffer;
-        const now = Date.now();
-        await fsEncrypt.writeFile(METADATA_FILE_PATH, content, now, now);
-      } catch {}
-
-      try {
-        await clearPendingDeletions(this.db, this.vaultRandomID, profileID, [
-          key,
-        ]);
-      } catch {}
-    } catch (e) {
-      console.debug(`immediate deletion error for ${filePath}: ${e}`);
-    }
-  }
-
-  _syncOnSaveEvent1 = () => {
-    this._checkCurrFileModified("SYNC");
-  };
-
-  _syncOnSaveEvent2 = throttle(
-    async () => {
-      await this._checkCurrFileModified("FILE_CHANGES");
-    },
-    1000 * 3,
-    {
-      leading: false,
-      trailing: true,
-    }
-  );
-
-  toggleSyncOnSaveIfSet() {
-    if (
-      this.settings.syncOnSaveAfterMilliseconds !== undefined &&
-      this.settings.syncOnSaveAfterMilliseconds !== null &&
-      this.settings.syncOnSaveAfterMilliseconds > 0
-    ) {
-      this.app.workspace.onLayoutReady(() => {
-        // listen to sync done
-        this.registerEvent(
-          this.syncEvent?.on("SYNC_DONE", this._syncOnSaveEvent1)!
-        );
-
-        // listen to current file save changes
-        this.registerEvent(this.app.vault.on("modify", this._syncOnSaveEvent2));
-        this.registerEvent(this.app.vault.on("create", this._syncOnSaveEvent2));
-        this.registerEvent(this.app.vault.on("delete", this._syncOnSaveEvent2));
-        this.registerEvent(this.app.vault.on("rename", this._syncOnSaveEvent2));
-      });
-    } else {
-      this.syncEvent?.off("SYNC_DONE", this._syncOnSaveEvent1);
-      this.app.vault.off("modify", this._syncOnSaveEvent2);
-      this.app.vault.off("create", this._syncOnSaveEvent2);
-      this.app.vault.off("delete", this._syncOnSaveEvent2);
-      this.app.vault.off("rename", this._syncOnSaveEvent2);
     }
   }
 

@@ -122,25 +122,6 @@ export function buildBasicSection(
     });
 
   new Setting(basicDiv)
-    .setName(t("settings_synconsave"))
-    .setDesc(t("settings_synconsave_desc"))
-    .addDropdown((dropdown) => {
-      dropdown.addOption("-1", t("settings_synconsave_disable"));
-      dropdown.addOption("1000", t("settings_synconsave_enable"));
-      let syncOnSaveEnabled = false;
-      if ((plugin.settings.syncOnSaveAfterMilliseconds ?? -1) > 0) {
-        syncOnSaveEnabled = true;
-      }
-      dropdown
-        .setValue(`${syncOnSaveEnabled ? "1000" : "-1"}`)
-        .onChange(async (val: string) => {
-          plugin.settings.syncOnSaveAfterMilliseconds = Number.parseInt(val);
-          await plugin.saveSettings();
-          plugin.toggleSyncOnSaveIfSet();
-        });
-    });
-
-  new Setting(basicDiv)
     .setName(t("settings_skiplargefiles"))
     .setDesc(t("settings_skiplargefiles_desc"))
     .addDropdown((dropdown) => {

@@ -16,21 +16,14 @@ import type { FakeFs } from "./fsAll";
 import type { FakeFsEncrypt } from "./fsEncrypt";
 import {
   type InternalDBs,
-  clearPendingDeletions,
+  type PendingOp,
+  clearPendingOps,
   clearPrevSyncRecordByVaultAndProfile,
   getAllPrevSyncRecordsByVaultAndProfile,
-  getPendingDeletions,
+  getPendingOps,
   insertSyncPlanRecordByVault,
   upsertPrevSyncRecordByVaultAndProfile,
 } from "./localdb";
-import {
-  METADATA_FILE_PATH,
-  type MetadataOnRemote,
-  addDeletionToMetadata,
-  cleanOldDeletions,
-  deserializeMetadataOnRemote,
-  serializeMetadataOnRemote,
-} from "./metadataOnRemote";
 import {
   atWhichLevel,
   checkValidName,
@@ -753,88 +746,92 @@ async function doActualSync(
   }
 }
 
-async function readMetadataFile(
-  fsEncrypt: FakeFsEncrypt
-): Promise<MetadataOnRemote> {
-  try {
-    const content = await fsEncrypt.readFile(METADATA_FILE_PATH);
-    return deserializeMetadataOnRemote(content);
-  } catch {
-    return { deletions: [] };
-  }
-}
-
-async function writeMetadataFile(
-  fsEncrypt: FakeFsEncrypt,
-  metadata: MetadataOnRemote
-): Promise<void> {
-  const json = serializeMetadataOnRemote(metadata);
-  const encoder = new TextEncoder();
-  const content = encoder.encode(json).buffer;
-  const now = Date.now();
-  try {
-    await fsEncrypt.writeFile(METADATA_FILE_PATH, content, now, now);
-  } catch (e) {
-    console.warn(`failed to write metadata file: ${e}`);
-  }
-}
-
-async function applyMetadataDeletions(
+async function processPendingOps(
+  pendingOps: PendingOp[],
   fsLocal: FakeFs,
   fsEncrypt: FakeFsEncrypt,
   db: InternalDBs,
   vaultRandomID: string,
-  profileID: string,
-  concurrency: number,
-  localDeletionKeys: string[],
-  remoteDeletionKeys: string[],
-  profiler?: Profiler
-): Promise<{ localFailed: string[]; remoteFailed: string[] }> {
-  const localFailed: string[] = [];
-  const remoteFailed: string[] = [];
-
-  const localQueue = new PQueue({ concurrency });
-  for (const key of localDeletionKeys) {
-    localQueue.add(async () => {
-      try {
-        await fsLocal.rm(key);
+  profileID: string
+) {
+  for (const op of pendingOps) {
+    try {
+      if (op.type === "create" || op.type === "modify") {
+        let content: ArrayBuffer;
+        try {
+          content = await fsLocal.readFile(op.key);
+        } catch {
+          console.debug(
+            `skip pending ${op.type} for ${op.key}: local file not found`
+          );
+          continue;
+        }
+        let mtime = Date.now();
+        let ctime = Date.now();
+        try {
+          const stat = await fsLocal.stat(op.key);
+          mtime = stat.mtimeCli ?? Date.now();
+          ctime = stat.ctimeCli ?? Date.now();
+        } catch {}
+        const entity = await fsEncrypt.writeFileSingle(
+          op.key,
+          content,
+          mtime,
+          ctime
+        );
+        await upsertPrevSyncRecordByVaultAndProfile(
+          db,
+          vaultRandomID,
+          profileID,
+          entity
+        );
+      } else if (op.type === "rename" && op.newKey !== undefined) {
+        let content: ArrayBuffer;
+        try {
+          content = await fsLocal.readFile(op.newKey);
+        } catch {
+          console.debug(
+            `skip pending rename for ${op.key} -> ${op.newKey}: local file not found`
+          );
+          continue;
+        }
+        let mtime = Date.now();
+        let ctime = Date.now();
+        try {
+          const stat = await fsLocal.stat(op.newKey);
+          mtime = stat.mtimeCli ?? Date.now();
+          ctime = stat.ctimeCli ?? Date.now();
+        } catch {}
+        const entity = await fsEncrypt.writeFileSingle(
+          op.newKey,
+          content,
+          mtime,
+          ctime
+        );
+        try {
+          await fsEncrypt.rmSingle(op.key);
+        } catch {
+          console.debug(
+            `cleanup old key after rename: ${op.key} not found on remote`
+          );
+        }
+        await upsertPrevSyncRecordByVaultAndProfile(
+          db,
+          vaultRandomID,
+          profileID,
+          entity
+        );
         await clearPrevSyncRecordByVaultAndProfile(
           db,
           vaultRandomID,
           profileID,
-          key
+          op.key
         );
-      } catch (e) {
-        localFailed.push(key);
       }
-    });
+    } catch (e) {
+      console.warn(`failed to process pending op for ${op.key}: ${e}`);
+    }
   }
-  await localQueue.onIdle();
-
-  const remoteQueue = new PQueue({ concurrency });
-  for (const key of remoteDeletionKeys) {
-    remoteQueue.add(async () => {
-      try {
-        await fsEncrypt.rm(key);
-        await clearPrevSyncRecordByVaultAndProfile(
-          db,
-          vaultRandomID,
-          profileID,
-          key
-        );
-      } catch (e) {
-        remoteFailed.push(key);
-      }
-    });
-  }
-  await remoteQueue.onIdle();
-
-  profiler?.insert("finish metadata deletions");
-  return { localFailed, remoteFailed };
-}
-
-function filterMetadataKey(entityList: Entity[]): Entity[] {
-  return entityList.filter((e) => e.keyRaw !== METADATA_FILE_PATH);
 }
 
 export async function syncer(
@@ -890,77 +887,58 @@ export async function syncer(
     }
     profiler?.insert(`finish step${step} (check password)`);
 
+    const pendingOps =
+      triggerSource !== "dry"
+        ? await getPendingOps(db, vaultRandomID, profileID)
+        : [];
+
+    if (pendingOps.length > 0) {
+      console.info(`processing ${pendingOps.length} pending operations`);
+      await processPendingOps(
+        pendingOps,
+        fsLocal,
+        fsEncrypt,
+        db,
+        vaultRandomID,
+        profileID
+      );
+      await clearPendingOps(db, vaultRandomID, profileID);
+      profiler?.insert("finish processing pending ops");
+    }
+
     step = 3;
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
-    const remoteEntityListRaw = await fsEncrypt.walk();
-    const remoteEntityList = filterMetadataKey(remoteEntityListRaw);
+    const remoteEntityList = await fsEncrypt.walk();
     profiler?.insert(`finish step${step} (list remote)`);
 
     step = 4;
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
-    const localEntityListRaw = await fsLocal.walk();
-    const localEntityList = filterMetadataKey(localEntityListRaw);
+    const localEntityList = await fsLocal.walk();
     profiler?.insert(`finish step${step} (list local)`);
 
     step = 5;
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
-    const prevSyncEntityListRaw = await getAllPrevSyncRecordsByVaultAndProfile(
+    const prevSyncEntityList = await getAllPrevSyncRecordsByVaultAndProfile(
       db,
       vaultRandomID,
       profileID
     );
-    const prevSyncEntityList = filterMetadataKey(prevSyncEntityListRaw);
     profiler?.insert(`finish step${step} (prev sync)`);
-
-    const metadataOnRemote =
-      triggerSource !== "dry"
-        ? await readMetadataFile(fsEncrypt)
-        : ({ deletions: [] } as MetadataOnRemote);
-
-    const pendingLocalDeletions =
-      triggerSource !== "dry"
-        ? await getPendingDeletions(db, vaultRandomID, profileID)
-        : [];
-
-    const confirmedDeletionKeys = new Set<string>();
-    for (const d of metadataOnRemote.deletions ?? [])
-      confirmedDeletionKeys.add(d.key);
-    for (const d of pendingLocalDeletions) confirmedDeletionKeys.add(d.key);
-
-    const localEntityMap = new Map(localEntityList.map((e) => [e.keyRaw, e]));
-    const remoteEntityMap = new Map(remoteEntityList.map((e) => [e.keyRaw, e]));
-
-    const metadataLocalDeletions: string[] = [];
-    const metadataRemoteDeletions: string[] = [];
-    for (const key of confirmedDeletionKeys) {
-      if (localEntityMap.has(key)) metadataLocalDeletions.push(key);
-      if (remoteEntityMap.has(key)) metadataRemoteDeletions.push(key);
-    }
-
-    const filteredLocalEntities = localEntityList.filter(
-      (e) => !confirmedDeletionKeys.has(e.keyRaw)
-    );
-    const filteredRemoteEntities = remoteEntityList.filter(
-      (e) => !confirmedDeletionKeys.has(e.keyRaw)
-    );
-    const filteredPrevSyncEntities = prevSyncEntityList.filter(
-      (e) => !confirmedDeletionKeys.has(e.keyRaw)
-    );
 
     step = 6;
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
     let mixedEntityMappings = await ensembleMixedEnties(
-      filteredLocalEntities,
-      filteredPrevSyncEntities,
-      filteredRemoteEntities,
+      localEntityList,
+      prevSyncEntityList,
+      remoteEntityList,
       settings.syncConfigDir ?? false,
       settings.syncBookmarks ?? false,
       configDir,
@@ -1015,38 +993,6 @@ export async function syncer(
         callbackSyncProcess
       );
       profiler?.insert(`finish step${step} (actual sync)`);
-
-      if (
-        metadataLocalDeletions.length > 0 ||
-        metadataRemoteDeletions.length > 0
-      ) {
-        await applyMetadataDeletions(
-          fsLocal,
-          fsEncrypt,
-          db,
-          vaultRandomID,
-          profileID,
-          settings.concurrency ?? 5,
-          metadataLocalDeletions,
-          metadataRemoteDeletions,
-          profiler
-        );
-      }
-
-      const freshMetadata = await readMetadataFile(fsEncrypt);
-      let updatedMetadata = { ...freshMetadata };
-      for (const d of pendingLocalDeletions) {
-        updatedMetadata = addDeletionToMetadata(updatedMetadata, d.key);
-      }
-      updatedMetadata = cleanOldDeletions(updatedMetadata);
-      await writeMetadataFile(fsEncrypt, updatedMetadata);
-
-      await clearPendingDeletions(
-        db,
-        vaultRandomID,
-        profileID,
-        pendingLocalDeletions.map((d) => d.key)
-      );
     } else {
       await notifyFunc?.(triggerSource, step);
       await ribboonFunc?.(triggerSource, step);

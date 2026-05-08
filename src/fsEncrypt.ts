@@ -401,7 +401,58 @@ export class FakeFsEncrypt extends FakeFs {
 
   async rmSingle(key: string): Promise<void> {
     const keyEnc = this.password === "" ? key : await this._encryptName(key);
+    this.cacheMapOrigToEnc[key] = keyEnc;
+    this.hasCacheMap = true;
     await this.innerFs.rm(keyEnc);
+  }
+
+  async writeFileSingle(
+    key: string,
+    content: ArrayBuffer,
+    mtime: number,
+    ctime: number
+  ): Promise<Entity> {
+    const keyEnc = this.password === "" ? key : await this._encryptName(key);
+    this.cacheMapOrigToEnc[key] = keyEnc;
+    this.hasCacheMap = true;
+    const contentEnc =
+      this.password === "" ? content : await this._encryptContent(content);
+    const innerEntity = await this.innerFs.writeFile(
+      keyEnc,
+      contentEnc,
+      mtime,
+      ctime
+    );
+    if (this.isPasswordEmpty()) {
+      return copyEntityAndCopyKeyEncSizeEnc(innerEntity);
+    }
+    return {
+      key: key,
+      keyRaw: innerEntity.keyRaw,
+      keyEnc: innerEntity.key!,
+      mtimeCli: innerEntity.mtimeCli,
+      mtimeSvr: innerEntity.mtimeSvr,
+      size: undefined,
+      sizeEnc: innerEntity.size!,
+      sizeRaw: innerEntity.sizeRaw,
+      hash: undefined,
+      synthesizedFolder: innerEntity.synthesizedFolder,
+    };
+  }
+
+  async renameSingle(key1: string, key2: string): Promise<void> {
+    const key1Enc = this.password === "" ? key1 : await this._encryptName(key1);
+    const key2Enc = this.password === "" ? key2 : await this._encryptName(key2);
+    this.cacheMapOrigToEnc[key1] = key1Enc;
+    this.cacheMapOrigToEnc[key2] = key2Enc;
+    this.hasCacheMap = true;
+    await this.innerFs.rename(key1Enc, key2Enc);
+  }
+
+  async cacheKey(key: string): Promise<void> {
+    const keyEnc = this.password === "" ? key : await this._encryptName(key);
+    this.cacheMapOrigToEnc[key] = keyEnc;
+    this.hasCacheMap = true;
   }
 
   async checkConnect(callbackFunc?: any): Promise<boolean> {

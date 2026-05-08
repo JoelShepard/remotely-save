@@ -648,3 +648,77 @@ export const clearPendingDeletions = async (
   );
   await db.simpleKVForMiscTbl.removeItems(compoundKeys);
 };
+
+const PENDING_OP_KEY_PREFIX = "pending-op";
+
+export type PendingOpType = "create" | "modify" | "rename" | "delete";
+
+export interface PendingOp {
+  type: PendingOpType;
+  key: string;
+  newKey?: string;
+  timestamp: number;
+}
+
+export const addPendingOp = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string,
+  op: PendingOp
+) => {
+  const entryKey = `${vaultRandomID}\t${profileID}\t${PENDING_OP_KEY_PREFIX}\t${op.type}\t${op.key}`;
+  await db.simpleKVForMiscTbl.setItem(entryKey, op);
+};
+
+export const getPendingOps = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string
+): Promise<PendingOp[]> => {
+  const prefix = `${vaultRandomID}\t${profileID}\t${PENDING_OP_KEY_PREFIX}\t`;
+  const results: PendingOp[] = [];
+  await db.simpleKVForMiscTbl.iterate((value, compoundKey) => {
+    if (typeof compoundKey === "string" && compoundKey.startsWith(prefix)) {
+      results.push(value as PendingOp);
+    }
+  });
+  return results;
+};
+
+export const clearPendingOps = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string
+) => {
+  const prefix = `${vaultRandomID}\t${profileID}\t${PENDING_OP_KEY_PREFIX}\t`;
+  const keysToRemove: string[] = [];
+  await db.simpleKVForMiscTbl.iterate((_value, compoundKey) => {
+    if (typeof compoundKey === "string" && compoundKey.startsWith(prefix)) {
+      keysToRemove.push(compoundKey);
+    }
+  });
+  await db.simpleKVForMiscTbl.removeItems(keysToRemove);
+};
+
+export const clearPendingOpsByKey = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string,
+  key: string,
+  type?: PendingOpType
+) => {
+  const prefix = `${vaultRandomID}\t${profileID}\t${PENDING_OP_KEY_PREFIX}\t`;
+  const keysToRemove: string[] = [];
+  await db.simpleKVForMiscTbl.iterate((_value, compoundKey) => {
+    if (typeof compoundKey === "string" && compoundKey.startsWith(prefix)) {
+      const suffix = compoundKey.slice(prefix.length);
+      const parts = suffix.split("\t");
+      const opType = parts[0];
+      if (type !== undefined && opType !== type) return;
+      if (parts[1] === key) {
+        keysToRemove.push(compoundKey);
+      }
+    }
+  });
+  await db.simpleKVForMiscTbl.removeItems(keysToRemove);
+};
