@@ -20,13 +20,10 @@ export const exportQrCodeUri = async (
     settings2 = cloneDeep(settings);
     delete settings2.s3;
     delete settings2.webdav;
-    delete settings2.webdis;
   } else if (exportFields === "s3") {
     settings2 = { s3: cloneDeep(settings.s3) };
   } else if (exportFields === "webdav") {
     settings2 = { webdav: cloneDeep(settings.webdav) };
-  } else if (exportFields === "webdis") {
-    settings2 = { webdis: cloneDeep(settings.webdis) };
   }
 
   delete settings2.vaultRandomID;

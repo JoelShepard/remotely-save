@@ -4,7 +4,7 @@ This file records the project conventions and configuration for AI coding assist
 
 ## Project Overview
 
-Remote Sync is a fork of Remotely Save, an Obsidian plugin for syncing vaults with cloud services (S3-compatible, WebDAV, Webdis). It runs in the browser environment provided by Obsidian (both desktop and mobile).
+Remote Sync is a fork of Remotely Save, an Obsidian plugin for syncing vaults with cloud services (S3-compatible, WebDAV). It runs in the browser environment provided by Obsidian (both desktop and mobile).
 
 ## Tech Stack
 
@@ -82,7 +82,6 @@ All adapters extend the abstract `FakeFs` base class:
 - `src/fsLocal.ts` — local vault filesystem operations (199 lines).
 - `src/fsS3.ts` — S3-compatible storage adapter.
 - `src/fsWebdav.ts` — WebDAV storage adapter.
-- `src/fsWebdis.ts` — Webdis (Redis HTTP gateway) adapter.
 - `src/fsMock.ts` — mock FS adapter for testing (64 lines).
 - `src/fsEncrypt.ts` — encryption wrapper/decorator around any `FakeFs` (587 lines).
 - `src/fsGetter.ts` — factory function to select the right adapter.
@@ -124,7 +123,7 @@ All adapters extend the abstract `FakeFs` base class:
 - `index.ts` — main settings tab (103 lines).
 - `helpers.ts` — UI helper functions.
 - `modals.ts` — settings modal dialogs.
-- `sections/` — 8 section files: `basic.ts`, `advanced.ts`, `s3.ts`, `webdav.ts`, `webdis.ts`, `importExport.ts`, `debug.ts`, `logs.ts`.
+- `sections/` — 7 section files: `basic.ts`, `advanced.ts`, `s3.ts`, `webdav.ts`, `importExport.ts`, `debug.ts`, `logs.ts`.
 
 #### Type Declarations
 

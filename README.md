@@ -6,11 +6,10 @@ A fork of [Remotely Save](https://github.com/remotely-save/remotely-save) that s
 
 - **S3-compatible** (Amazon S3, MinIO, Backblaze B2, Wasabi, and any S3-compatible storage)
 - **WebDAV** (Nextcloud, Synology, ownCloud, Seafile, and any WebDAV server)
-- **Webdis** (Redis over HTTP)
 
 ## Features
 
-- Sync by S3, WebDAV, or Webdis
+- Sync by S3 or WebDAV
 - Mobile support
 - End-to-end encryption (RClone Crypt / OpenSSL)
 - Scheduled auto sync and manual sync

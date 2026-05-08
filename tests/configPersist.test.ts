@@ -8,7 +8,6 @@ const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   webdav: {
     address: "addr",
   } as any,
-  webdis: {} as any,
   password: "password",
   serviceType: "webdav",
   currLogLevel: "info",

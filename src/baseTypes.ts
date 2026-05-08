@@ -2,7 +2,7 @@ import type { LangTypeAndAuto } from "./i18n";
 
 export const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
-export type SUPPORTED_SERVICES_TYPE = "s3" | "webdav" | "webdis";
+export type SUPPORTED_SERVICES_TYPE = "s3" | "webdav";
 
 export type SUPPORTED_SERVICES_TYPE_WITH_REMOTE_BASE_DIR = Exclude<
   SUPPORTED_SERVICES_TYPE,
@@ -51,13 +51,6 @@ export interface WebdavConfig {
   manualRecursive: boolean;
 }
 
-export interface WebdisConfig {
-  address: string;
-  username?: string;
-  password?: string;
-  remoteBaseDir?: string;
-}
-
 export type SyncDirectionType =
   | "bidirectional"
   | "incremental_pull_only"
@@ -78,7 +71,6 @@ export interface ProfilerConfig {
 export interface RemotelySavePluginSettings {
   s3: S3Config;
   webdav: WebdavConfig;
-  webdis: WebdisConfig;
 
   password: string;
   serviceType: SUPPORTED_SERVICES_TYPE;

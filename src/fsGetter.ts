@@ -2,7 +2,6 @@ import type { RemotelySavePluginSettings } from "./baseTypes";
 import type { FakeFs } from "./fsAll";
 import { FakeFsS3 } from "./fsS3";
 import { FakeFsWebdav } from "./fsWebdav";
-import { FakeFsWebdis } from "./fsWebdis";
 
 export function getClient(
   settings: RemotelySavePluginSettings,
@@ -15,12 +14,6 @@ export function getClient(
     case "webdav":
       return new FakeFsWebdav(
         settings.webdav,
-        vaultName,
-        saveUpdatedConfigFunc
-      );
-    case "webdis":
-      return new FakeFsWebdis(
-        settings.webdis,
         vaultName,
         saveUpdatedConfigFunc
       );

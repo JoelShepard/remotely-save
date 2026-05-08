@@ -10,7 +10,6 @@ import { buildImportExportSection } from "./sections/importExport";
 import { buildLogsSection } from "./sections/logs";
 import { buildS3Section } from "./sections/s3";
 import { buildWebdavSection } from "./sections/webdav";
-import { buildWebdisSection } from "./sections/webdis";
 
 export { ChangeRemoteBaseDirModal } from "./modals";
 export { wrapTextWithPasswordHide } from "./helpers";
@@ -42,7 +41,6 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
       .addDropdown(async (dropdown) => {
         dropdown.addOption("s3", t("settings_chooseservice_s3"));
         dropdown.addOption("webdav", t("settings_chooseservice_webdav"));
-        dropdown.addOption("webdis", t("settings_chooseservice_webdis"));
 
         dropdown
           .setValue(this.plugin.settings.serviceType)
@@ -62,11 +60,6 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
     buildWebdavSection(webdavSection, this.plugin, this.app, t);
     webdavSection.style.display =
       this.plugin.settings.serviceType === "webdav" ? "" : "none";
-
-    const webdisSection = createSection(containerEl, t("settings_webdis"));
-    buildWebdisSection(webdisSection, this.plugin, this.app, t);
-    webdisSection.style.display =
-      this.plugin.settings.serviceType === "webdis" ? "" : "none";
 
     buildBasicSection(
       createSection(containerEl, t("settings_basic")),

@@ -37,12 +37,6 @@ export function buildImportExportSection(
       button.onClick(async () => {
         new ExportSettingsQrCodeModal(plugin.app, plugin, "webdav").open();
       });
-    })
-    .addButton(async (button) => {
-      button.setButtonText(t("settings_export_webdis_button"));
-      button.onClick(async () => {
-        new ExportSettingsQrCodeModal(plugin.app, plugin, "webdis").open();
-      });
     });
 
   let importSettingVal = "";

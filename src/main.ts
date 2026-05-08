@@ -29,7 +29,6 @@ import { getClient } from "./fsGetter";
 import { FakeFsLocal } from "./fsLocal";
 import { DEFAULT_S3_CONFIG } from "./fsS3";
 import { DEFAULT_WEBDAV_CONFIG } from "./fsWebdav";
-import { DEFAULT_WEBDIS_CONFIG } from "./fsWebdis";
 import { I18n } from "./i18n";
 import type { LangTypeAndAuto, TransItemType } from "./i18n";
 import { importQrCodeUri } from "./importExport";
@@ -54,7 +53,6 @@ import { syncer } from "./syncEngine";
 const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   s3: DEFAULT_S3_CONFIG,
   webdav: DEFAULT_WEBDAV_CONFIG,
-  webdis: DEFAULT_WEBDIS_CONFIG,
   password: "",
   serviceType: "s3",
   currLogLevel: "info",

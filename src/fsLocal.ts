@@ -172,11 +172,22 @@ export class FakeFsLocal extends FakeFs {
   }
 
   async rm(key: string): Promise<void> {
+    const exists = await this.vault.adapter.exists(key);
+    if (!exists) {
+      return;
+    }
     if (this.deleteToWhere === "obsidian") {
+      const idx = key.lastIndexOf("/");
+      const trashDir = idx >= 0 ? `.trash/${key.substring(0, idx)}` : ".trash";
+      await mkdirpInVault(trashDir, this.vault);
       await this.vault.adapter.trashLocal(key);
     } else {
       // "system"
       if (!(await this.vault.adapter.trashSystem(key))) {
+        const idx = key.lastIndexOf("/");
+        const trashDir =
+          idx >= 0 ? `.trash/${key.substring(0, idx)}` : ".trash";
+        await mkdirpInVault(trashDir, this.vault);
         await this.vault.adapter.trashLocal(key);
       }
     }
