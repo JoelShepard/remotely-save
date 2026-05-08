@@ -55,7 +55,7 @@ export function buildLogsSection(
   });
   exportBtn.addEventListener("click", async () => {
     const now = Date.now();
-    const fileName = `_debug_remotely_save/logs_exported_on_${now}.txt`;
+    const fileName = `_debug_remote_sync/logs_exported_on_${now}.txt`;
     await plugin.app.vault.create(fileName, logsTextArea.value);
     new Notice(`Logs exported to ${fileName}`);
   });

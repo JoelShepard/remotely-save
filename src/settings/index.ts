@@ -34,7 +34,7 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
 
     injectStyles(containerEl);
 
-    containerEl.createEl("h1", { text: "Remotely Save" });
+    containerEl.createEl("h1", { text: "Remote Sync" });
 
     new Setting(containerEl)
       .setName(t("settings_chooseservice"))

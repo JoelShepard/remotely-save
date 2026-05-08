@@ -51,7 +51,7 @@ export function buildImportExportSection(
     .setDesc(t("settings_import_desc"))
     .addText((text) =>
       text
-        .setPlaceholder("obsidian://remotely-save?func=settings&...")
+        .setPlaceholder("obsidian://remote-sync?func=settings&...")
         .setValue("")
         .onChange((val) => {
           importSettingVal = val;

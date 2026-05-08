@@ -99,7 +99,7 @@ export const listFilesInObsFolder = async (
               continue;
             }
             if (isInsideSelfPlugin && !isLikelyPluginSubFiles(iter2)) {
-              // special treatment for remotely-save folder
+              // special treatment for remote-sync folder
               continue;
             }
             q.push(iter2);
@@ -111,7 +111,7 @@ export const listFilesInObsFolder = async (
               continue;
             }
             if (isInsideSelfPlugin && !isLikelyPluginSubFiles(iter2)) {
-              // special treatment for remotely-save folder
+              // special treatment for remote-sync folder
               continue;
             }
             q.push(iter2);

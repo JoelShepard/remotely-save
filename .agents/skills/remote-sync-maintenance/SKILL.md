@@ -1,12 +1,12 @@
 ---
-name: remotely-save-maintenance
-description: "Project maintenance workflow for Remotely Save Obsidian plugin. Covers updating AGENTS.md, refreshing docs/, running tests/format, and committing+pushing changes."
+name: remote-sync-maintenance
+description: "Project maintenance workflow for Remote Sync Obsidian plugin. Covers updating AGENTS.md, refreshing docs/, running tests/format, and committing+pushing changes."
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
-# Remotely Save Maintenance
+# Remote Sync Maintenance
 
-> Workflow for maintaining AGENTS.md, docs/, and committing changes for the Remotely Save Obsidian plugin.
+> Workflow for maintaining AGENTS.md, docs/, and committing changes for the Remote Sync Obsidian plugin.
 
 ## When to Use This Skill
 

@@ -48,7 +48,7 @@ export interface ProcessQrCodeResultType {
 }
 
 export const parseUriByHand = (input: string) => {
-  if (!input.startsWith("obsidian://remotely-save?func=settings&")) {
+  if (!input.startsWith("obsidian://remote-sync?func=settings&")) {
     throw Error(`not valid string`);
   }
 

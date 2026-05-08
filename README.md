@@ -1,6 +1,6 @@
-# Remotely Save
+# Remote Sync
 
-A sync plugin for [Obsidian](https://obsidian.md) that syncs your vault with cloud services.
+A fork of [Remotely Save](https://github.com/remotely-save/remotely-save) that syncs your Obsidian vault with cloud services.
 
 ## Supported Services
 
@@ -19,10 +19,18 @@ A sync plugin for [Obsidian](https://obsidian.md) that syncs your vault with clo
 - Conflict detection and handling
 - Bidirectional, push-only, and pull-only sync directions
 
-## Install
+## Install via BRAT (recommended)
 
-1. Search "Remotely Save" in Obsidian's community plugin list.
-2. Or manual install: download `main.js`, `manifest.json`, `styles.css` from the [latest release](https://github.com/JoelShepard/remotely-save/releases).
+This plugin is not in the official community store (yet). Install using [BRAT](https://obsidian.md/plugins?id=obsidian42-brat):
+
+1. Install **BRAT** from Obsidian's community plugins
+2. In BRAT settings, click **Add Beta plugin**
+3. Enter the repo: `JoelShepard/remotely-save`
+4. Enable **Remote Sync** in the community plugins list
+
+## Manual Install
+
+Download `main.js`, `manifest.json`, `styles.css` from the [latest release](https://github.com/JoelShepard/remotely-save/releases).
 
 ## License
 

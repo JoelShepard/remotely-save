@@ -4,7 +4,7 @@ This file records the project conventions and configuration for AI coding assist
 
 ## Project Overview
 
-Remotely Save is an Obsidian plugin for syncing vaults with cloud services (S3-compatible, WebDAV, Webdis). It runs in the browser environment provided by Obsidian (both desktop and mobile).
+Remote Sync is a fork of Remotely Save, an Obsidian plugin for syncing vaults with cloud services (S3-compatible, WebDAV, Webdis). It runs in the browser environment provided by Obsidian (both desktop and mobile).
 
 ## Tech Stack
 
@@ -45,10 +45,10 @@ npm run clean       # remove main.js
 Copy the build artifacts into your vault's plugin directory:
 
 ```bash
-cp main.js manifest.json /path/to/your/vault/.obsidian/plugins/remotely-save/
+cp main.js manifest.json /path/to/your/vault/.obsidian/plugins/remote-sync/
 ```
 
-Then in Obsidian: **Settings → Community Plugins → Remotely Save → Enable**.
+Then in Obsidian: **Settings → Community Plugins → Remote Sync → Enable**.
 
 ## Key Conventions
 
