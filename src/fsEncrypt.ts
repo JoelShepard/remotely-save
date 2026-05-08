@@ -399,6 +399,11 @@ export class FakeFsEncrypt extends FakeFs {
     return await this.innerFs.rm(keyEnc);
   }
 
+  async rmSingle(key: string): Promise<void> {
+    const keyEnc = this.password === "" ? key : await this._encryptName(key);
+    await this.innerFs.rm(keyEnc);
+  }
+
   async checkConnect(callbackFunc?: any): Promise<boolean> {
     return await this.innerFs.checkConnect(callbackFunc);
   }

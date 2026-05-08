@@ -605,3 +605,46 @@ export const readAllProfilerResultsByVault = async (
     return records.map((x) => x.val);
   }
 };
+
+const PENDING_DELETION_KEY_PREFIX = "pending-deletion";
+
+export const addPendingDeletion = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string,
+  key: string
+) => {
+  await db.simpleKVForMiscTbl.setItem(
+    `${vaultRandomID}\t${profileID}\t${PENDING_DELETION_KEY_PREFIX}\t${key}`,
+    Date.now()
+  );
+};
+
+export const getPendingDeletions = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string
+): Promise<{ key: string; timestamp: number }[]> => {
+  const prefix = `${vaultRandomID}\t${profileID}\t${PENDING_DELETION_KEY_PREFIX}\t`;
+  const results: { key: string; timestamp: number }[] = [];
+  await db.simpleKVForMiscTbl.iterate((value, compoundKey) => {
+    if (typeof compoundKey === "string" && compoundKey.startsWith(prefix)) {
+      const fileKey = compoundKey.slice(prefix.length);
+      results.push({ key: fileKey, timestamp: value as number });
+    }
+  });
+  return results;
+};
+
+export const clearPendingDeletions = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string,
+  keys: string[]
+) => {
+  const compoundKeys = keys.map(
+    (k) =>
+      `${vaultRandomID}\t${profileID}\t${PENDING_DELETION_KEY_PREFIX}\t${k}`
+  );
+  await db.simpleKVForMiscTbl.removeItems(compoundKeys);
+};

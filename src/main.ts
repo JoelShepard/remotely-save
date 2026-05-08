@@ -34,17 +34,31 @@ import type { LangTypeAndAuto, TransItemType } from "./i18n";
 import { importQrCodeUri } from "./importExport";
 import {
   type InternalDBs,
+  addPendingDeletion,
   clearAllLoggerOutputRecords,
   clearExpiredSyncPlanRecords,
+  clearPendingDeletions,
   getLastFailedSyncTimeByVault,
   getLastSuccessSyncTimeByVault,
+  getPendingDeletions,
   prepareDBs,
   upsertLastFailedSyncTimeByVault,
   upsertLastSuccessSyncTimeByVault,
   upsertPluginVersionByVault,
 } from "./localdb";
 import { startLogInterception, stopLogInterception } from "./logManager";
-import { changeMobileStatusBar } from "./misc";
+import {
+  METADATA_FILE_PATH,
+  addDeletionToMetadata,
+  cleanOldDeletions,
+  deserializeMetadataOnRemote,
+  serializeMetadataOnRemote,
+} from "./metadataOnRemote";
+import {
+  changeMobileStatusBar,
+  isHiddenPath,
+  isSpecialFolderNameToSkip,
+} from "./misc";
 import { DEFAULT_PROFILER_CONFIG, Profiler } from "./profiler";
 import { RemotelySaveSettingTab } from "./settings/index";
 import { SyncAlgoV3Modal } from "./syncAlgoV3Notice";
@@ -671,6 +685,16 @@ export default class RemotelySavePlugin extends Plugin {
 
     this.enableCheckingFileStat();
 
+    this.app.workspace.onLayoutReady(() => {
+      this.registerEvent(
+        this.app.vault.on("delete", (file) => {
+          if (file.path) {
+            this._handleImmediateDeletion(file.path);
+          }
+        })
+      );
+    });
+
     if (!this.settings.agreeToUseSyncV3) {
       const syncAlgoV3Modal = new SyncAlgoV3Modal(this.app, this);
       syncAlgoV3Modal.open();
@@ -960,6 +984,66 @@ export default class RemotelySavePlugin extends Plugin {
       }
     } else {
       console.debug(`no currentFile here`);
+    }
+  }
+
+  async _handleImmediateDeletion(filePath: string) {
+    try {
+      if (filePath.endsWith("/")) {
+        return;
+      }
+
+      const key = filePath;
+
+      if (
+        isHiddenPath(key, true, true) ||
+        isSpecialFolderNameToSkip(key, undefined) ||
+        key === METADATA_FILE_PATH
+      ) {
+        return;
+      }
+
+      if (key.startsWith(this.app.vault.configDir)) {
+        return;
+      }
+
+      const profileID = this.getCurrProfileID();
+      await addPendingDeletion(this.db, this.vaultRandomID, profileID, key);
+
+      const fsRemote = getClient(
+        this.settings,
+        this.app.vault.getName(),
+        async () => await this.saveSettings()
+      );
+      const fsEncrypt = new FakeFsEncrypt(
+        fsRemote,
+        this.settings.password ?? "",
+        this.settings.encryptionMethod ?? "rclone-base64"
+      );
+
+      try {
+        await fsEncrypt.rmSingle(key);
+      } catch {}
+
+      try {
+        const raw = await fsEncrypt.readFile(METADATA_FILE_PATH);
+        const meta = deserializeMetadataOnRemote(raw);
+        const updated = addDeletionToMetadata(meta, key);
+        const cleaned = cleanOldDeletions(updated);
+        const json = serializeMetadataOnRemote(cleaned);
+        const encoder = new TextEncoder();
+        const content = encoder.encode(json).buffer;
+        const now = Date.now();
+        await fsEncrypt.writeFile(METADATA_FILE_PATH, content, now, now);
+      } catch {}
+
+      try {
+        await clearPendingDeletions(this.db, this.vaultRandomID, profileID, [
+          key,
+        ]);
+      } catch {}
+    } catch (e) {
+      console.debug(`immediate deletion error for ${filePath}: ${e}`);
     }
   }
 

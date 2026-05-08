@@ -13,6 +13,10 @@ export const DEFAULT_FILE_NAME_FOR_METADATAONREMOTE =
 export const DEFAULT_FILE_NAME_FOR_METADATAONREMOTE2 =
   "_remote-sync-metadata-on-remote.bin";
 
+export const METADATA_FILE_PATH = "_remote_sync/metadata.json";
+
+export const DELETION_CLEANUP_AGE_MS = 15 * 24 * 60 * 60 * 1000;
+
 export interface DeletionOnRemote {
   key: string;
   actionWhen: number;
@@ -109,4 +113,37 @@ export const deserializeMetadataOnRemote = (x: string | ArrayBuffer) => {
     );
   }
   return y4;
+};
+
+export const addDeletionToMetadata = (
+  meta: MetadataOnRemote,
+  key: string,
+  actionWhen?: number
+): MetadataOnRemote => {
+  const deletions = meta.deletions ?? [];
+  const existing = deletions.findIndex((d) => d.key === key);
+  const entry: DeletionOnRemote = { key, actionWhen: actionWhen ?? Date.now() };
+  if (existing >= 0) {
+    deletions[existing] = entry;
+  } else {
+    deletions.push(entry);
+  }
+  return { ...meta, deletions, generatedWhen: Date.now() };
+};
+
+export const removeDeletionsFromMetadata = (
+  meta: MetadataOnRemote,
+  keys: string[]
+): MetadataOnRemote => {
+  const deletions = (meta.deletions ?? []).filter((d) => !keys.includes(d.key));
+  return { ...meta, deletions, generatedWhen: Date.now() };
+};
+
+export const cleanOldDeletions = (
+  meta: MetadataOnRemote,
+  maxAgeMs: number = DELETION_CLEANUP_AGE_MS
+): MetadataOnRemote => {
+  const cutoff = Date.now() - maxAgeMs;
+  const deletions = (meta.deletions ?? []).filter((d) => d.actionWhen > cutoff);
+  return { ...meta, deletions, generatedWhen: Date.now() };
 };
