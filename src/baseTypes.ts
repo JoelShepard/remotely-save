@@ -1,28 +1,8 @@
-/**
- * Only type defs here.
- * To avoid circular dependency.
- */
-
 import type { LangTypeAndAuto } from "./i18n";
-
-declare global {
-  var DEFAULT_DROPBOX_APP_KEY: string;
-  var DEFAULT_ONEDRIVE_CLIENT_ID: string;
-  var DEFAULT_ONEDRIVE_AUTHORITY: string;
-}
-
-export const DROPBOX_APP_KEY = global.DEFAULT_DROPBOX_APP_KEY;
-export const ONEDRIVE_CLIENT_ID = global.DEFAULT_ONEDRIVE_CLIENT_ID;
-export const ONEDRIVE_AUTHORITY = global.DEFAULT_ONEDRIVE_AUTHORITY;
 
 export const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 
-export type SUPPORTED_SERVICES_TYPE =
-  | "s3"
-  | "webdav"
-  | "dropbox"
-  | "onedrive"
-  | "webdis";
+export type SUPPORTED_SERVICES_TYPE = "s3" | "webdav" | "webdis";
 
 export type SUPPORTED_SERVICES_TYPE_WITH_REMOTE_BASE_DIR = Exclude<
   SUPPORTED_SERVICES_TYPE,
@@ -45,30 +25,15 @@ export interface S3Config {
 
   generateFolderObject?: boolean;
 
-  /**
-   * @deprecated
-   */
   bypassCorsLocally?: boolean;
-}
-
-export interface DropboxConfig {
-  accessToken: string;
-  clientID: string;
-  refreshToken: string;
-  accessTokenExpiresInSeconds: number;
-  accessTokenExpiresAtTime: number;
-  accountID: string;
-  username: string;
-  credentialsShouldBeDeletedAtTime?: number;
-  remoteBaseDir?: string;
 }
 
 export type WebdavAuthType = "digest" | "basic";
 export type WebdavDepthType =
-  | "auto" // deprecated on 20240116
-  | "auto_unknown" // deprecated on 20240116
-  | "auto_1" // deprecated on 20240116
-  | "auto_infinity" // deprecated on 20240116
+  | "auto"
+  | "auto_unknown"
+  | "auto_1"
+  | "auto_infinity"
   | "manual_1"
   | "manual_infinity";
 
@@ -83,25 +48,7 @@ export interface WebdavConfig {
 
   customHeaders?: string;
 
-  /**
-   * @deprecated
-   */
-  manualRecursive: boolean; // deprecated in 0.3.6, use depth
-}
-
-export interface OnedriveConfig {
-  accessToken: string;
-  clientID: string;
-  authority: string;
-  refreshToken: string;
-  accessTokenExpiresInSeconds: number;
-  accessTokenExpiresAtTime: number;
-  deltaLink: string;
-  username: string;
-  credentialsShouldBeDeletedAtTime?: number;
-  remoteBaseDir?: string;
-  emptyFile: "skip" | "error";
-  kind: "onedrive";
+  manualRecursive: boolean;
 }
 
 export interface WebdisConfig {
@@ -131,8 +78,6 @@ export interface ProfilerConfig {
 export interface RemotelySavePluginSettings {
   s3: S3Config;
   webdav: WebdavConfig;
-  dropbox: DropboxConfig;
-  onedrive: OnedriveConfig;
   webdis: WebdisConfig;
 
   password: string;
@@ -166,31 +111,17 @@ export interface RemotelySavePluginSettings {
 
   profiler?: ProfilerConfig;
 
-  /**
-   * @deprecated
-   */
   agreeToUploadExtraMetadata?: boolean;
 
-  /**
-   * @deprecated
-   */
   vaultRandomID?: string;
 
-  /**
-   * @deprecated
-   */
   logToDB?: boolean;
 
-  /**
-   * @deprecated
-   */
   howToCleanEmptyFolder?: EmptyFolderCleanType;
 }
 
 export const COMMAND_URI = "remotely-save";
 export const COMMAND_CALLBACK = "remotely-save-cb";
-export const COMMAND_CALLBACK_ONEDRIVE = "remotely-save-cb-onedrive";
-export const COMMAND_CALLBACK_DROPBOX = "remotely-save-cb-dropbox";
 
 export interface UriParams {
   func?: string;
@@ -199,14 +130,9 @@ export interface UriParams {
   data?: string;
 }
 
-// 80 days
-export const OAUTH2_FORCE_EXPIRE_MILLISECONDS = 1000 * 60 * 60 * 24 * 80;
-
 export type EmptyFolderCleanType = "skip" | "clean_both";
 
-export type ConflictActionType =
-  | "keep_newer"
-  | "keep_larger";
+export type ConflictActionType = "keep_newer" | "keep_larger";
 
 export type DecisionTypeForMixedEntity =
   | "only_history"
@@ -233,10 +159,6 @@ export type DecisionTypeForMixedEntity =
   | "folder_to_be_deleted_on_remote"
   | "folder_to_be_deleted_on_local";
 
-/**
- * uniform representation
- * everything should be flat and primitive, so that we can copy.
- */
 export interface Entity {
   key?: string;
   keyEnc?: string;
@@ -249,7 +171,7 @@ export interface Entity {
   mtimeSvrFmt?: string;
   prevSyncTime?: number;
   prevSyncTimeFmt?: string;
-  size?: number; // might be unknown or to be filled
+  size?: number;
   sizeEnc?: number;
   sizeRaw: number;
   hash?: string;
@@ -263,9 +185,6 @@ export interface UploadedType {
   mtimeCli?: number;
 }
 
-/**
- * A replacement of FileOrFolderMixedState
- */
 export interface MixedEntity {
   key: string;
   local?: Entity;
@@ -281,9 +200,6 @@ export interface MixedEntity {
   sideNotes?: any;
 }
 
-/**
- * @deprecated
- */
 export interface FileOrFolderMixedState {
   key: string;
   existLocal?: boolean;
@@ -298,7 +214,7 @@ export interface FileOrFolderMixedState {
   sizeRemoteEnc?: number;
   changeRemoteMtimeUsingMapping?: boolean;
   changeLocalMtimeUsingMapping?: boolean;
-  decision?: string; // old DecisionType is deleted, fallback to string
+  decision?: string;
   decisionBranch?: number;
   syncDone?: "done";
   remoteEncryptedKey?: string;

@@ -6,7 +6,7 @@
 
 2. `misc.ts` should not depend on any other written code.
 
-3. Each storage code should not depend on `sync.ts`.
+3. Each storage adapter should not depend on `syncEngine.ts`.
 
 ## File and Folder Representation
 

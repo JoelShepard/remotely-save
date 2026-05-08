@@ -2,7 +2,7 @@
 
 The encryption is compatible with RClone Crypt with **base64** name encryption format.
 
-It's developed based on another js project by the same author of Remotely Save: [`@fyears/rclone-crypt`](https://github.com/fyears/rclone-crypt), which is NOT an official library from RClone, and is NOT affiliated with RClone.
+It's developed based on another js project by the same author of Remotely Save: [`@fyears/rclone-crypt`](https://github.com/JoelShepard/rclone-crypt), which is NOT an official library from RClone, and is NOT affiliated with RClone.
 
 Reasonable tests are also ported from official RClone code, to ensure the compatibility and correctness of the encryption.
 

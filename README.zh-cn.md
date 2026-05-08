@@ -2,11 +2,11 @@
 
 [English](./README.md) | 中文
 
-这是Obsidian的一个非官方同步插件。如果你喜欢它或觉得它帮到了你，请考虑在Github上给它一颗[星星 ![GitHub Repo stars](https://img.shields.io/github/stars/fyears/remotely-save?style=social)](https://github.com/fyears/remotely-save)。
+这是Obsidian的一个非官方同步插件。如果你喜欢它或觉得它帮到了你，请考虑在Github上给它一颗[星星 ![GitHub Repo stars](https://img.shields.io/github/stars/JoelShepard/remotely-save?style=social)](https://github.com/JoelShepard/remotely-save)。
 
-[![BuildCI](https://github.com/fyears/remotely-save/actions/workflows/auto-build.yml/badge.svg)](https://github.com/fyears/remotely-save/actions/workflows/auto-build.yml)
+[![BuildCI](https://github.com/JoelShepard/remotely-save/actions/workflows/auto-build.yml/badge.svg)](https://github.com/JoelShepard/remotely-save/actions/workflows/auto-build.yml)
 
-[![最新版本的下载量](https://img.shields.io/github/downloads-pre/remotely-save/remotely-save/latest/main.js?sort=semver)](https://github.com/fyears/remotely-save/releases)
+[![最新版本的下载量](https://img.shields.io/github/downloads-pre/remotely-save/remotely-save/latest/main.js?sort=semver)](https://github.com/JoelShepard/remotely-save/releases)
 
 ## 免责声明
 
@@ -58,8 +58,8 @@
 
 - 选项 #1：在官方“社区插件列表”中搜索，或访问此链接：[https://obsidian.md/plugins?id=remotely-save](https://obsidian.md/plugins?id=remotely-save)（应该会重定向到 Obsidian app），然后安装插件。
 - 选项 #2：你也可以使用 [Obsidian42 - BRAT](https://github.com/TfTHacker/obsidian42-brat) 来安装此插件。在 BRAT 的配置中输入 `remotely-save/remotely-save`。
-- 选项 #3：[![GitHub release (latest by SemVer and asset including pre-releases)](https://img.shields.io/github/downloads-pre/fyears/remotely-save/latest/main.js?sort=semver)](https://github.com/fyears/remotely-save/releases) 从最新发布中手动下载文件（`main.js`，`manifest.json`，`styles.css`）。
-- 选项 #4：[![BuildCI](https://github.com/fyears/remotely-save/actions/workflows/auto-build.yml/badge.svg)](https://github.com/fyears/remotely-save/actions/workflows/auto-build.yml) 每个成功的构建的“摘要”下都有构建文件。它是由每个提交自动生成的，可能不会正常工作。
+- 选项 #3：[![GitHub release (latest by SemVer and asset including pre-releases)](https://img.shields.io/github/downloads-pre/JoelShepard/remotely-save/latest/main.js?sort=semver)](https://github.com/JoelShepard/remotely-save/releases) 从最新发布中手动下载文件（`main.js`，`manifest.json`，`styles.css`）。
+- 选项 #4：[![BuildCI](https://github.com/JoelShepard/remotely-save/actions/workflows/auto-build.yml/badge.svg)](https://github.com/JoelShepard/remotely-save/actions/workflows/auto-build.yml) 每个成功的构建的“摘要”下都有构建文件。它是由每个提交自动生成的，可能不会正常工作。
 
 ## 使用方法
 
@@ -94,7 +94,7 @@
 ### 个人 OneDrive（应用文件夹）
 
 - **此插件不是官方 Microsoft / OneDrive 产品。** 插件只是使用 Microsoft 的 [OneDrive 公共 API](https://docs.microsoft.com/en-us/onedrive/developer/rest-api) 而已。
-- 此插件仅适用于“个人 OneDrive”，不适用于“OneDrive for Business。详见 [#11](https://github.com/fyears/remotely-save/issues/11)。
+- 此插件仅适用于“个人 OneDrive”，不适用于“OneDrive for Business。详见 [#11](https://github.com/JoelShepard/remotely-save/issues/11)。
 - 授权后，插件可以读取你的姓名和电子邮件，并读取和写入你的OneDrive的 `/Apps/remotely-save` 文件夹中的文件。
 - 如果你决定授权此插件连接到 OneDrive，请访问插件的设置页，选择OneDrive 然后按照说明操作。
 - 基于密码的端到端加密也是可以的。但请注意，**vault 名称本身未加密**。

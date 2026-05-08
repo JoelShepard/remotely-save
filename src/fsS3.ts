@@ -186,9 +186,9 @@ export const DEFAULT_S3_CONFIG: S3Config = {
   partsConcurrency: 20,
   forcePathStyle: false,
   remotePrefix: "",
-  useAccurateMTime: false, // it causes money, disable by default
+  useAccurateMTime: false,
   reverseProxyNoSignUrl: "",
-  generateFolderObject: false, // new version, by default not generate folders
+  generateFolderObject: false,
 };
 
 /**
@@ -307,8 +307,6 @@ const fromS3ObjectToEntity = (
   mtimeRecords: Record<string, number>,
   ctimeRecords: Record<string, number>
 ) => {
-  // console.debug(`fromS3ObjectToEntity: ${x.Key!}, ${JSON.stringify(x,null,2)}`);
-  // S3 officially only supports seconds precision!!!!!
   if (x.LastModified === undefined) {
     throw Error(
       `s3 object ${x.Key!} doesn't have LastModified value: ${JSON.stringify(
@@ -321,24 +319,21 @@ const fromS3ObjectToEntity = (
   if (x.Key! in mtimeRecords) {
     const m2 = mtimeRecords[x.Key!];
     if (m2 !== 0) {
-      // to be compatible with RClone, we read and store the time in seconds in new version!
       if (m2 >= 1000000000000) {
-        // it's a millsecond, uploaded by old codes..
         mtimeCli = m2;
       } else {
-        // it's a second, uploaded by new codes of the plugin from March 24, 2024
         mtimeCli = m2 * 1000;
       }
     }
   }
-  const key = getLocalNoPrefixPath(x.Key!, remotePrefix); // we remove prefix here
+  const key = getLocalNoPrefixPath(x.Key!, remotePrefix);
   const r: Entity = {
-    key: key, // from s3's repsective, the keyRaw is the key, we will change it in decyption
+    key: key,
     keyRaw: key,
     mtimeSvr: mtimeSvr,
     mtimeCli: mtimeCli,
     sizeRaw: x.Size!,
-    size: x.Size!, // from s3's repsective, the sizeRaw is the size, we will change it in decyption
+    size: x.Size!,
     etag: x.ETag,
     synthesizedFolder: false,
   };
@@ -351,8 +346,6 @@ const fromS3HeadObjectToEntity = (
   remotePrefix: string,
   useAccurateMTime: boolean
 ) => {
-  // console.debug(`fromS3HeadObjectToEntity: ${fileOrFolderPathWithRemotePrefix}: ${JSON.stringify(x,null,2)}`);
-  // S3 officially only supports seconds precision!!!!!
   if (x.LastModified === undefined) {
     throw Error(
       `s3 object ${fileOrFolderPathWithRemotePrefix} doesn't have LastModified value: ${JSON.stringify(
@@ -367,26 +360,17 @@ const fromS3HeadObjectToEntity = (
       Number.parseFloat(x.Metadata.mtime || x.Metadata.MTime || "0")
     );
     if (m2 !== 0) {
-      // to be compatible with RClone, we read and store the time in seconds in new version!
       if (m2 >= 1000000000000) {
-        // it's a millsecond, uploaded by old codes..
         mtimeCli = m2;
       } else {
-        // it's a second, uploaded by new codes of the plugin from March 24, 2024
         mtimeCli = m2 * 1000;
       }
     }
   }
-  // console.debug(
-  //   `fromS3HeadObjectToEntity, fileOrFolderPathWithRemotePrefix=${fileOrFolderPathWithRemotePrefix}, remotePrefix=${remotePrefix}, x=${JSON.stringify(
-  //     x
-  //   )} `
-  // );
   const key = getLocalNoPrefixPath(
     fileOrFolderPathWithRemotePrefix,
     remotePrefix
   );
-  // console.debug(`fromS3HeadObjectToEntity, key=${key} after removing prefix`);
   return {
     key: key,
     keyRaw: key,
@@ -426,10 +410,6 @@ export class FakeFsS3 extends FakeFs {
     return res;
   }
 
-  /**
-   * the input key contains basedir (prefix),
-   * but the result doesn't contain it.
-   */
   async _walkFromRoot(prefixOfRawKeys: string | undefined, partial: boolean) {
     const confCmd = {
       Bucket: this.s3Config.s3BucketName,
@@ -438,7 +418,7 @@ export class FakeFsS3 extends FakeFs {
       confCmd.Prefix = prefixOfRawKeys;
     }
     if (partial) {
-      confCmd.MaxKeys = 10; // no need to list more!
+      confCmd.MaxKeys = 10;
     }
 
     const contents = [] as _Object[];
@@ -468,7 +448,6 @@ export class FakeFsS3 extends FakeFs {
       contents.push(...rsp.Contents);
 
       if (this.s3Config.useAccurateMTime) {
-        // head requests of all objects, love it
         for (const content of rsp.Contents) {
           queueHead.add(async () => {
             const rspHead = await this.s3Client.send(
@@ -499,10 +478,8 @@ export class FakeFsS3 extends FakeFs {
       }
 
       if (partial) {
-        // do not loop over
         isTruncated = false;
       } else {
-        // loop over
         isTruncated = rsp.IsTruncated ?? false;
         confCmd.ContinuationToken = rsp.NextContinuationToken;
         if (
@@ -515,12 +492,8 @@ export class FakeFsS3 extends FakeFs {
       }
     } while (isTruncated);
 
-    // wait for any head requests
     await queueHead.onIdle();
 
-    // ensemble fake rsp
-    // in the end, we need to transform the response list
-    // back to the local contents-alike list
     const res: Entity[] = [];
     const realEnrities = new Set<string>();
     for (const remoteObj of contents) {
@@ -575,10 +548,6 @@ export class FakeFsS3 extends FakeFs {
     return await this._statFromRoot(keyFullPath);
   }
 
-  /**
-   * the input key contains basedir (prefix),
-   * but the result doesn't contain it.
-   */
   async _statFromRoot(key: string): Promise<Entity> {
     if (
       this.s3Config.remotePrefix !== undefined &&
@@ -645,7 +614,7 @@ export class FakeFsS3 extends FakeFs {
       Key: key,
       Body: "",
       ContentType: contentType,
-      ContentLength: 0, // interesting we need to set this to avoid the warning
+      ContentLength: 0,
     };
     const metadata: Record<string, string> = {};
     if (mtime !== undefined && mtime !== 0) {
@@ -680,10 +649,6 @@ export class FakeFsS3 extends FakeFs {
     return res;
   }
 
-  /**
-   * the input key contains basedir (prefix),
-   * but the result doesn't contain it.
-   */
   async _writeFileFromRoot(
     key: string,
     content: ArrayBuffer,
@@ -708,8 +673,8 @@ export class FakeFsS3 extends FakeFs {
 
     const upload = new Upload({
       client: this.s3Client,
-      queueSize: this.s3Config.partsConcurrency, // concurrency
-      partSize: bytesIn5MB, // minimal 5MB by default
+      queueSize: this.s3Config.partsConcurrency,
+      partSize: bytesIn5MB,
       leavePartsOnError: false,
       params: {
         Bucket: this.s3Config.s3BucketName,
@@ -775,9 +740,6 @@ export class FakeFsS3 extends FakeFs {
         return;
       }
 
-      // in s3 the folder may not exist, so we make our best effort.
-      // do NOT read this.s3Config.generateFolderObject
-      // because the folder might be generated by previous setting
       try {
         const remoteFileName = getRemoteWithPrefixPath(
           key,
@@ -806,19 +768,10 @@ export class FakeFsS3 extends FakeFs {
         })
       );
     }
-
-    // TODO: do we need to delete folder recursively?
-    // maybe we should not
-    // because the outer sync algorithm should do that
-    // (await this._walkFromRoot(remoteFileName)).map(...)
   }
 
   async checkConnect(callbackFunc?: any): Promise<boolean> {
     try {
-      // const results = await this.s3Client.send(
-      //   new HeadBucketCommand({ Bucket: this.s3Config.s3BucketName })
-      // );
-      // very simplified version of listing objects
       const confCmd = {
         Bucket: this.s3Config.s3BucketName,
       } as ListObjectsV2CommandInput;

@@ -7,7 +7,6 @@ import {
   type RemotelySavePluginSettings,
   type UriParams,
 } from "./baseTypes";
-import { getShrinkedSettings as getShrinkedSettingsOnedrive } from "./fsOnedrive";
 
 export const exportQrCodeUri = async (
   settings: RemotelySavePluginSettings,
@@ -20,16 +19,10 @@ export const exportQrCodeUri = async (
   if (exportFields === "basic_and_advanced") {
     settings2 = cloneDeep(settings);
     delete settings2.s3;
-    delete settings2.dropbox;
-    delete settings2.onedrive;
     delete settings2.webdav;
     delete settings2.webdis;
   } else if (exportFields === "s3") {
     settings2 = { s3: cloneDeep(settings.s3) };
-  } else if (exportFields === "dropbox") {
-    settings2 = { dropbox: cloneDeep(settings.dropbox) };
-  } else if (exportFields === "onedrive") {
-    settings2 = { onedrive: getShrinkedSettingsOnedrive(settings.onedrive) };
   } else if (exportFields === "webdav") {
     settings2 = { webdav: cloneDeep(settings.webdav) };
   } else if (exportFields === "webdis") {
@@ -41,7 +34,6 @@ export const exportQrCodeUri = async (
   const vault = encodeURIComponent(currentVaultName);
   const version = encodeURIComponent(pluginVersion);
   const rawUri = `obsidian://${COMMAND_URI}?func=settings&version=${version}&vault=${vault}&data=${data}`;
-  // console.info(uri)
   const imgUri = await QRCode.toDataURL(rawUri);
   return {
     rawUri,
@@ -55,10 +47,6 @@ export interface ProcessQrCodeResultType {
   result?: RemotelySavePluginSettings;
 }
 
-/**
- * we also support directly parse the uri, instead of relying on web browser
- * @param input
- */
 export const parseUriByHand = (input: string) => {
   if (!input.startsWith("obsidian://remotely-save?func=settings&")) {
     throw Error(`not valid string`);

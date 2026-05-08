@@ -1,7 +1,9 @@
 import "dotenv/config";
+import { createRequire } from "node:module";
 import esbuild from "esbuild";
 import inlineWorkerPlugin from "esbuild-plugin-inline-worker";
 import process from "process";
+const require = createRequire(import.meta.url);
 // import builtins from 'builtin-modules'
 
 const banner = `/*
@@ -13,11 +15,6 @@ if you want to view the source, please visit the github repository of this plugi
 console.log(`esbuild version = ${esbuild.version}`);
 
 const prod = process.argv[2] === "production";
-
-const DEFAULT_DROPBOX_APP_KEY = process.env.DROPBOX_APP_KEY || "";
-const DEFAULT_ONEDRIVE_CLIENT_ID = process.env.ONEDRIVE_CLIENT_ID || "";
-const DEFAULT_ONEDRIVE_AUTHORITY = process.env.ONEDRIVE_AUTHORITY || "";
-
 
 esbuild
   .context({
@@ -44,16 +41,13 @@ esbuild
     inject: ["./esbuild.injecthelper.mjs"],
     format: "cjs",
     // watch: !prod, // no longer valid in esbuild 0.17
-    target: "es2016",
+    target: "es2020",
     logLevel: "info",
     sourcemap: prod ? false : "inline",
     treeShaking: true,
     minify: prod,
     outfile: "main.js",
     define: {
-      "global.DEFAULT_DROPBOX_APP_KEY": `"${DEFAULT_DROPBOX_APP_KEY}"`,
-      "global.DEFAULT_ONEDRIVE_CLIENT_ID": `"${DEFAULT_ONEDRIVE_CLIENT_ID}"`,
-      "global.DEFAULT_ONEDRIVE_AUTHORITY": `"${DEFAULT_ONEDRIVE_AUTHORITY}"`,
       global: "window",
       "process.env.NODE_DEBUG": `undefined`, // ugly fix
       "process.env.DEBUG": `undefined`, // ugly fix
@@ -65,7 +59,21 @@ esbuild
       // https://github.com/Azure/azure-sdk-for-js/blob/main/sdk/core/core-util/src/checkEnvironment.ts
       "globalThis.process.versions": `undefined`,
     },
-    plugins: [inlineWorkerPlugin()],
+    plugins: [
+      inlineWorkerPlugin(),
+      {
+        name: "node-protocol",
+        setup(build) {
+          build.onResolve({ filter: /^node:url$/ }, (args) => ({
+            path: require.resolve("./url-shim.js"),
+          }));
+          build.onResolve({ filter: /^node:/ }, (args) => ({
+            path: args.path.replace(/^node:/, ""),
+            external: true,
+          }));
+        },
+      },
+    ],
   })
   .then((context) => {
     if (process.argv.includes("--watch")) {

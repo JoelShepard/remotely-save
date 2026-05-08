@@ -1,14 +1,9 @@
 import type { RemotelySavePluginSettings } from "./baseTypes";
 import type { FakeFs } from "./fsAll";
-import { FakeFsDropbox } from "./fsDropbox";
-import { FakeFsOnedrive } from "./fsOnedrive";
 import { FakeFsS3 } from "./fsS3";
 import { FakeFsWebdav } from "./fsWebdav";
 import { FakeFsWebdis } from "./fsWebdis";
 
-/**
- * To avoid circular dependency, we need a new file here.
- */
 export function getClient(
   settings: RemotelySavePluginSettings,
   vaultName: string,
@@ -20,18 +15,6 @@ export function getClient(
     case "webdav":
       return new FakeFsWebdav(
         settings.webdav,
-        vaultName,
-        saveUpdatedConfigFunc
-      );
-    case "dropbox":
-      return new FakeFsDropbox(
-        settings.dropbox,
-        vaultName,
-        saveUpdatedConfigFunc
-      );
-    case "onedrive":
-      return new FakeFsOnedrive(
-        settings.onedrive,
         vaultName,
         saveUpdatedConfigFunc
       );

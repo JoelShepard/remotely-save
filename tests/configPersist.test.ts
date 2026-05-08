@@ -4,23 +4,13 @@ import type { RemotelySavePluginSettings } from "../src/baseTypes";
 import { messyConfigToNormal, normalConfigToMessy } from "../src/configPersist";
 
 const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
-  s3: {
-    s3AccessKeyID: "acc",
-  } as any,
+  s3: {} as any,
   webdav: {
     address: "addr",
   } as any,
-  dropbox: {
-    username: "测试中文",
-  } as any,
-  onedrive: {
-    username: "test 🍎 emoji",
-  } as any,
-  webdis: {
-    address: "addr",
-  } as any,
+  webdis: {} as any,
   password: "password",
-  serviceType: "s3",
+  serviceType: "webdav",
   currLogLevel: "info",
   ignorePaths: ["somefoldertoignore"],
   enableStatusBarInfo: true,

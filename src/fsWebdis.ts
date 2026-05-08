@@ -16,7 +16,6 @@ export const DEFAULT_WEBDIS_CONFIG: WebdisConfig = {
 const getWebdisPath = (fileOrFolderPath: string, remoteBaseDir: string) => {
   let key = fileOrFolderPath;
   if (fileOrFolderPath === "/" || fileOrFolderPath === "") {
-    // special
     key = `${remoteBaseDir}`;
   } else if (fileOrFolderPath.startsWith("/")) {
     console.warn(
@@ -26,28 +25,23 @@ const getWebdisPath = (fileOrFolderPath: string, remoteBaseDir: string) => {
   } else {
     key = `${remoteBaseDir}/${fileOrFolderPath}`;
   }
-  return `rs:fs:v1:${encodeURIComponent(key)}`; // we should encode them!!!!
+  return `rs:fs:v1:${encodeURIComponent(key)}`;
 };
 
 export const getOrigPath = (fullKey: string, remoteBaseDir: string) => {
   const fullKeyDecoded = decodeURIComponent(fullKey);
   const prefix = `rs:fs:v1:${remoteBaseDir}/`;
-  // console.debug(`prefix=${prefix}`);
   const suffix1 = ":meta";
   const suffix2 = ":content";
   if (!fullKeyDecoded.startsWith(prefix)) {
     throw Error(`you should not call getOrigEntity on ${fullKey}`);
   }
   let realKey = fullKeyDecoded.slice(prefix.length);
-  // console.debug(`realKey=${realKey}`);
   if (realKey.endsWith(suffix1)) {
     realKey = realKey.slice(0, -suffix1.length);
-    // console.debug(`realKey=${realKey}`);
   } else if (realKey.endsWith(suffix2)) {
     realKey = realKey.slice(0, -suffix2.length);
-    // console.debug(`realKey=${realKey}`);
   }
-  // console.debug(`fullKey=${fullKey}, realKey=${realKey}`);
   return realKey;
 };
 
@@ -89,7 +83,6 @@ export class FakeFsWebdis extends FakeFs {
     }
 
     const fullUrl = `${address}/${urlPath}`;
-    // console.debug(`fullUrl=${fullUrl}`)
 
     const username = this.webdisConfig.username ?? "";
     const password = this.webdisConfig.password ?? "";
@@ -121,34 +114,27 @@ export class FakeFsWebdis extends FakeFs {
       const rsp = (await (await this._fetchCommand("GET", command)).json())[
         "SCAN"
       ];
-      // console.debug(rsp);
       cursor = rsp[0];
       for (const fullKeyWithMeta of rsp[1]) {
         const realKey = getOrigPath(fullKeyWithMeta, this.remoteBaseDir);
         res.push(await this.stat(realKey));
       }
     } while (cursor !== "0");
-    // console.debug(`walk res:`);
-    // console.debug(res);
     return res;
   }
 
   async walkPartial(): Promise<Entity[]> {
     let cursor = "0";
     const res: Entity[] = [];
-    const command = `SCAN/${cursor}/MATCH/rs:fs:v1:${encodeURIComponent(this.remoteBaseDir + "/")}*:meta/COUNT/10`; // fewer keys
+    const command = `SCAN/${cursor}/MATCH/rs:fs:v1:${encodeURIComponent(this.remoteBaseDir + "/")}*:meta/COUNT/10`;
     const rsp = (await (await this._fetchCommand("GET", command)).json())[
       "SCAN"
     ];
-    // console.debug(rsp);
     cursor = rsp[0];
     for (const fullKeyWithMeta of rsp[1]) {
       const realKey = getOrigPath(fullKeyWithMeta, this.remoteBaseDir);
       res.push(await this.stat(realKey));
     }
-    // no need to loop over cursor
-    // console.debug(`walk res:`);
-    // console.debug(res);
     return res;
   }
 
@@ -158,14 +144,11 @@ export class FakeFsWebdis extends FakeFs {
   }
 
   async _statFromRaw(key: string): Promise<Entity> {
-    // console.debug(`_statFromRaw on ${key}`);
     const command = `HGETALL/${key}:meta`;
     const rsp = (await (await this._fetchCommand("GET", command)).json())[
       "HGETALL"
     ];
-    // console.debug(`rsp: ${JSON.stringify(rsp, null, 2)}`);
     if (isEqual(rsp, {})) {
-      // empty!
       throw Error(`key ${key} doesn't exist!`);
     }
     const realKey = getOrigPath(key, this.remoteBaseDir);
@@ -201,7 +184,6 @@ export class FakeFsWebdis extends FakeFs {
   ): Promise<Entity> {
     const fullKey = getWebdisPath(key, this.remoteBaseDir);
 
-    // meta
     let command1 = `HSET/${fullKey}:meta/size/${content.byteLength}`;
     if (mtime !== undefined && mtime !== 0) {
       command1 = `${command1}/mtime/${mtime}`;
@@ -213,13 +195,11 @@ export class FakeFsWebdis extends FakeFs {
       "HSET"
     ];
 
-    // content
     const command2 = `SET/${fullKey}:content`;
     const rsp2 = (
       await (await this._fetchCommand("PUT", command2, content)).json()
     )["SET"];
 
-    // fetch meta
     return await this.stat(key);
   }
 
@@ -261,7 +241,6 @@ export class FakeFsWebdis extends FakeFs {
       return false;
     }
     return await this.checkConnectCommonOps(callbackFunc);
-    // return true;
   }
 
   async getUserDisplayName(): Promise<string> {

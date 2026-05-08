@@ -9,7 +9,9 @@ pnpm-lock.yaml
 
 # build
 main.js
+*.main.js
 *.js.map
+url-shim.js
 
 # obsidian
 data.json
@@ -19,3 +21,4 @@ logs.txt
 
 # hidden files
 .*
+!.agents/

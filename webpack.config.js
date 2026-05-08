@@ -7,7 +7,6 @@ const DEFAULT_DROPBOX_APP_KEY = process.env.DROPBOX_APP_KEY || "";
 const DEFAULT_ONEDRIVE_CLIENT_ID = process.env.ONEDRIVE_CLIENT_ID || "";
 const DEFAULT_ONEDRIVE_AUTHORITY = process.env.ONEDRIVE_AUTHORITY || "";
 
-
 module.exports = {
   entry: "./src/main.ts",
   target: "web",
@@ -17,6 +16,10 @@ module.exports = {
     libraryTarget: "commonjs",
   },
   plugins: [
+    // Handle node: protocol imports (e.g. node:url from clean-stack)
+    new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+      resource.request = resource.request.replace(/^node:/, "");
+    }),
     new webpack.DefinePlugin({
       "global.DEFAULT_DROPBOX_APP_KEY": `"${DEFAULT_DROPBOX_APP_KEY}"`,
       "global.DEFAULT_ONEDRIVE_CLIENT_ID": `"${DEFAULT_ONEDRIVE_CLIENT_ID}"`,
@@ -52,7 +55,7 @@ module.exports = {
       {
         test: /\.tsx?$/,
         use: "ts-loader",
-        exclude: /node_modules/,
+        exclude: /node_modules|tests/,
       },
       {
         test: /\.svg?$/,
@@ -67,6 +70,9 @@ module.exports = {
     ],
   },
   resolve: {
+    alias: {
+      url: require.resolve("./url-shim"),
+    },
     extensions: [".tsx", ".ts", ".js"],
     mainFields: ["browser", "module", "main"],
     fallback: {
@@ -95,7 +101,6 @@ module.exports = {
       // timers: require.resolve("timers-browserify"),
       tls: false,
       // tty: require.resolve("tty-browserify"),
-      url: require.resolve("url/"),
       // util: require.resolve("util"),
       // vm: require.resolve("vm-browserify"),
       vm: false,

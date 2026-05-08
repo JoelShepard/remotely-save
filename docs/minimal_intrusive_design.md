@@ -4,7 +4,7 @@
 
 ~~From version 0.3.0 ~ 0.3.40, the plugin just upload minimal extra necessary meta data to the remote.~~
 
-From version 0.4.1 and above, the plugin doesn't need uploading meta data due to the sync algorithm upgrade.
+Since version 0.4.1 (and continuing through the current version), the plugin doesn't need uploading meta data due to the sync algorithm upgrade.
 
 ## Benefits
 
