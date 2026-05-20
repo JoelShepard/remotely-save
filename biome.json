@@ -4,7 +4,7 @@
     "enabled": true
   },
   "files": {
-    "ignore": ["main.js"]
+    "ignore": ["main.js", "*.main.js", "*.js.map"]
   },
   "formatter": {
     "enabled": true,

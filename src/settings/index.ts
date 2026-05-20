@@ -1,8 +1,8 @@
-import { type App, PluginSettingTab, Setting } from "obsidian";
+import { type App, PluginSettingTab, Setting, SettingGroup } from "obsidian";
 import type { SUPPORTED_SERVICES_TYPE } from "../baseTypes";
 import type { TransItemType } from "../i18n";
 import type RemotelySavePlugin from "../main";
-import { createSection, injectStyles } from "./helpers";
+import { injectStyles } from "./helpers";
 import { buildAdvancedSection } from "./sections/advanced";
 import { buildBasicSection } from "./sections/basic";
 import { buildDebugSection } from "./sections/debug";
@@ -33,8 +33,6 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
 
     injectStyles(containerEl);
 
-    containerEl.createEl("h1", { text: "Remote Sync" });
-
     new Setting(containerEl)
       .setName(t("settings_chooseservice"))
       .setDesc(t("settings_chooseservice_desc"))
@@ -51,41 +49,47 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
           });
       });
 
-    const s3Section = createSection(containerEl, t("settings_s3"));
-    buildS3Section(s3Section, this.plugin, this.app, t);
-    s3Section.style.display =
-      this.plugin.settings.serviceType === "s3" ? "" : "none";
-
-    const webdavSection = createSection(containerEl, t("settings_webdav"));
-    buildWebdavSection(webdavSection, this.plugin, this.app, t);
-    webdavSection.style.display =
-      this.plugin.settings.serviceType === "webdav" ? "" : "none";
+    if (this.plugin.settings.serviceType === "s3") {
+      const s3Group = new SettingGroup(containerEl).setHeading(
+        t("settings_s3")
+      );
+      buildS3Section(s3Group, this.plugin, this.app, t);
+    } else if (this.plugin.settings.serviceType === "webdav") {
+      const webdavGroup = new SettingGroup(containerEl).setHeading(
+        t("settings_webdav")
+      );
+      buildWebdavSection(webdavGroup, this.plugin, this.app, t);
+    }
 
     buildBasicSection(
-      createSection(containerEl, t("settings_basic")),
+      new SettingGroup(containerEl).setHeading(t("settings_basic")),
       this.plugin,
       t
     );
 
     buildAdvancedSection(
-      createSection(containerEl, t("settings_adv")),
+      new SettingGroup(containerEl).setHeading(t("settings_adv")),
       this.plugin,
       t
     );
 
     buildImportExportSection(
-      createSection(containerEl, t("settings_importexport")),
+      new SettingGroup(containerEl).setHeading(t("settings_importexport")),
       this.plugin,
       t
     );
 
     buildDebugSection(
-      createSection(containerEl, t("settings_debug")),
+      new SettingGroup(containerEl).setHeading(t("settings_debug")),
       this.plugin,
       t
     );
 
-    buildLogsSection(createSection(containerEl, "Logs"), this.plugin, t);
+    buildLogsSection(
+      new SettingGroup(containerEl).setHeading("Logs"),
+      this.plugin,
+      t
+    );
   }
 
   hide() {

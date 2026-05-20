@@ -54,13 +54,3 @@ export function injectStyles(containerEl: HTMLElement) {
 }
 `;
 }
-
-export function createSection(
-  containerEl: HTMLElement,
-  label: string,
-  open = true
-) {
-  const sectionEl = containerEl.createEl("div", { cls: "rs-settings-section" });
-  new Setting(sectionEl).setHeading().setName(label);
-  return sectionEl;
-}
