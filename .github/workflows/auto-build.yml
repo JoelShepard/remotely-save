@@ -13,12 +13,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    environment: env-for-buildci
-
-    env:
-      REMOTELYSAVE_WEBSITE: ${{secrets.REMOTELYSAVE_WEBSITE}}
-      REMOTELYSAVE_CLIENT_ID: ${{secrets.REMOTELYSAVE_CLIENT_ID}}
-
     strategy:
       matrix:
         node-version: [20.x]
