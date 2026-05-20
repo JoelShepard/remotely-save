@@ -1,4 +1,4 @@
-import { Notice, Platform, Setting, type SettingGroup } from "obsidian";
+import { Notice, Platform, type SettingGroup } from "obsidian";
 import { messyConfigToNormal } from "../../configPersist";
 import { exportVaultSyncPlansToFiles } from "../../debugMode";
 import {
@@ -16,6 +16,7 @@ export function buildDebugSection(
   plugin: RemotelySavePlugin,
   t: TFunction
 ) {
+  // Always-visible debug items
   debugGroup.addSetting((setting) => {
     setting
       .setName(t("settings_debuglevel"))
@@ -71,7 +72,10 @@ export function buildDebugSection(
       });
   });
 
-
+  // ── Developer-only items ──
+  if (!plugin.settings.showDeveloperOptions) {
+    return;
+  }
 
   debugGroup.addSetting((setting) => {
     setting.setHeading().setName(t("settings_syncplans"));
@@ -95,8 +99,6 @@ export function buildDebugSection(
         });
       });
   });
-
-
 
   debugGroup.addSetting((setting) => {
     setting

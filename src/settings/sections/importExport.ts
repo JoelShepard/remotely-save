@@ -19,7 +19,10 @@ export function buildImportExportSection(
       .setClass("setting-need-wrapping")
       .addDropdown((dropdown) => {
         dropdown
-          .addOption("basic_and_advanced", t("settings_export_basic_and_advanced_button"))
+          .addOption(
+            "basic_and_advanced",
+            t("settings_export_basic_and_advanced_button")
+          )
           .addOption("s3", t("settings_export_s3_button"))
           .addOption("webdav", t("settings_export_webdav_button"))
           .setValue("basic_and_advanced")

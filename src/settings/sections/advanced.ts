@@ -1,4 +1,4 @@
-import { Platform, type Setting, type SettingGroup } from "obsidian";
+import { Notice, Platform, type Setting, type SettingGroup } from "obsidian";
 import type { ConflictActionType, SyncDirectionType } from "../../baseTypes";
 import type RemotelySavePlugin from "../../main";
 import { changeMobileStatusBar } from "../../misc";
@@ -11,6 +11,11 @@ export function buildAdvancedSection(
   plugin: RemotelySavePlugin,
   t: TFunction
 ) {
+  // ── Performance ──
+  advGroup.addSetting((setting) => {
+    setting.setHeading().setName("🚀 " + t("settings_performance"));
+  });
+
   advGroup.addSetting((setting) => {
     setting
       .setName(t("settings_concurrency"))
@@ -32,6 +37,114 @@ export function buildAdvancedSection(
             await plugin.saveSettings();
           });
       });
+  });
+
+  // ── Sync Behavior ──
+  advGroup.addSetting((setting) => {
+    setting.setHeading().setName("🔄 " + t("settings_sync_behavior"));
+  });
+
+  let conflictActionSetting: Setting;
+  advGroup.addSetting((setting) => {
+    conflictActionSetting = setting;
+    setting
+      .setName(t("settings_conflictaction"))
+      .setDesc(stringToFragment(t("settings_conflictaction_desc")))
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption("keep_newer", t("settings_conflictaction_keep_newer"))
+          .addOption("keep_larger", t("settings_conflictaction_keep_larger"))
+          .setValue(plugin.settings.conflictAction ?? "keep_newer")
+          .onChange(async (val) => {
+            plugin.settings.conflictAction = val as ConflictActionType;
+            await plugin.saveSettings();
+            conflictActionSetting.setDesc(
+              stringToFragment(t("settings_conflictaction_desc"))
+            );
+          });
+      });
+  });
+
+  advGroup.addSetting((setting) => {
+    setting
+      .setName(t("setting_syncdirection"))
+      .setDesc(stringToFragment(t("setting_syncdirection_desc")))
+      .addDropdown((dropdown) => {
+        dropdown.addOption(
+          "bidirectional",
+          t("setting_syncdirection_bidirectional_desc")
+        );
+        dropdown.addOption(
+          "incremental_push_only",
+          t("setting_syncdirection_incremental_push_only_desc")
+        );
+        dropdown.addOption(
+          "incremental_pull_only",
+          t("setting_syncdirection_incremental_pull_only_desc")
+        );
+        dropdown.addOption(
+          "incremental_push_and_delete_only",
+          t("setting_syncdirection_incremental_push_and_delete_only_desc")
+        );
+        dropdown.addOption(
+          "incremental_pull_and_delete_only",
+          t("setting_syncdirection_incremental_pull_and_delete_only_desc")
+        );
+
+        dropdown
+          .setValue(plugin.settings.syncDirection ?? "bidirectional")
+          .onChange(async (val) => {
+            plugin.settings.syncDirection = val as SyncDirectionType;
+            await plugin.saveSettings();
+          });
+      });
+  });
+
+  advGroup.addSetting((setting) => {
+    setting
+      .setName(t("settings_protectmodifypercentage"))
+      .setDesc(t("settings_protectmodifypercentage_desc"))
+      .addText((text) => {
+        text.inputEl.type = "number";
+        text.inputEl.min = "0";
+        text.inputEl.max = "100";
+        text
+          .setPlaceholder("50")
+          .setValue(`${plugin.settings.protectModifyPercentage ?? 50}`)
+          .onChange(async (val) => {
+            let k = Number.parseFloat(val.trim());
+            if (!Number.isNaN(k)) {
+              if (k < 0) k = 0;
+              else if (k > 100) k = 100;
+              plugin.settings.protectModifyPercentage = k;
+              await plugin.saveSettings();
+            }
+          });
+      });
+  });
+
+  advGroup.addSetting((setting) => {
+    setting
+      .setName(t("settings_deletetowhere"))
+      .setDesc(t("settings_deletetowhere_desc"))
+      .addDropdown((dropdown) => {
+        dropdown.addOption("system", t("settings_deletetowhere_system_trash"));
+        dropdown.addOption(
+          "obsidian",
+          t("settings_deletetowhere_obsidian_trash")
+        );
+        dropdown
+          .setValue(plugin.settings.deleteToWhere ?? "system")
+          .onChange(async (val) => {
+            plugin.settings.deleteToWhere = val as "system" | "obsidian";
+            await plugin.saveSettings();
+          });
+      });
+  });
+
+  // ── Miscellaneous ──
+  advGroup.addSetting((setting) => {
+    setting.setHeading().setName("📎 " + t("settings_misc"));
   });
 
   advGroup.addSetting((setting) => {
@@ -106,103 +219,22 @@ export function buildAdvancedSection(
       });
   });
 
-  advGroup.addSetting((setting) => {
-    setting
-      .setName(t("settings_deletetowhere"))
-      .setDesc(t("settings_deletetowhere_desc"))
-      .addDropdown((dropdown) => {
-        dropdown.addOption("system", t("settings_deletetowhere_system_trash"));
-        dropdown.addOption(
-          "obsidian",
-          t("settings_deletetowhere_obsidian_trash")
-        );
-        dropdown
-          .setValue(plugin.settings.deleteToWhere ?? "system")
-          .onChange(async (val) => {
-            plugin.settings.deleteToWhere = val as "system" | "obsidian";
-            await plugin.saveSettings();
-          });
-      });
-  });
-
-  let conflictActionSetting: Setting;
-  advGroup.addSetting((setting) => {
-    conflictActionSetting = setting;
-    setting
-      .setName(t("settings_conflictaction"))
-      .setDesc(stringToFragment(t("settings_conflictaction_desc")))
-      .addDropdown((dropdown) => {
-        dropdown
-          .addOption("keep_newer", t("settings_conflictaction_keep_newer"))
-          .addOption("keep_larger", t("settings_conflictaction_keep_larger"))
-          .setValue(plugin.settings.conflictAction ?? "keep_newer")
-          .onChange(async (val) => {
-            plugin.settings.conflictAction = val as ConflictActionType;
-            await plugin.saveSettings();
-            conflictActionSetting.setDesc(
-              stringToFragment(t("settings_conflictaction_desc"))
-            );
-          });
-      });
-  });
-
-  advGroup.addSetting((setting) => {
-    setting
-      .setName(t("settings_protectmodifypercentage"))
-      .setDesc(t("settings_protectmodifypercentage_desc"))
-      .addText((text) => {
-        text.inputEl.type = "number";
-        text.inputEl.min = "0";
-        text.inputEl.max = "100";
-        text
-          .setPlaceholder("50")
-          .setValue(`${plugin.settings.protectModifyPercentage ?? 50}`)
-          .onChange(async (val) => {
-            let k = Number.parseFloat(val.trim());
-            if (!Number.isNaN(k)) {
-              if (k < 0) k = 0;
-              else if (k > 100) k = 100;
-              plugin.settings.protectModifyPercentage = k;
+  if (!Platform.isMobileApp) {
+    advGroup.addSetting((setting) => {
+      setting
+        .setName(t("settings_enablestatusbar_info"))
+        .setDesc(t("settings_enablestatusbar_info_desc"))
+        .addToggle((toggle) => {
+          toggle
+            .setValue(plugin.settings.enableStatusBarInfo ?? false)
+            .onChange(async (val) => {
+              plugin.settings.enableStatusBarInfo = val;
               await plugin.saveSettings();
-            }
-          });
-      });
-  });
-
-  advGroup.addSetting((setting) => {
-    setting
-      .setName(t("setting_syncdirection"))
-      .setDesc(stringToFragment(t("setting_syncdirection_desc")))
-      .addDropdown((dropdown) => {
-        dropdown.addOption(
-          "bidirectional",
-          t("setting_syncdirection_bidirectional_desc")
-        );
-        dropdown.addOption(
-          "incremental_push_only",
-          t("setting_syncdirection_incremental_push_only_desc")
-        );
-        dropdown.addOption(
-          "incremental_pull_only",
-          t("setting_syncdirection_incremental_pull_only_desc")
-        );
-        dropdown.addOption(
-          "incremental_push_and_delete_only",
-          t("setting_syncdirection_incremental_push_and_delete_only_desc")
-        );
-        dropdown.addOption(
-          "incremental_pull_and_delete_only",
-          t("setting_syncdirection_incremental_pull_and_delete_only_desc")
-        );
-
-        dropdown
-          .setValue(plugin.settings.syncDirection ?? "bidirectional")
-          .onChange(async (val) => {
-            plugin.settings.syncDirection = val as SyncDirectionType;
-            await plugin.saveSettings();
-          });
-      });
-  });
+              new Notice(t("settings_enablestatusbar_reloadrequired_notice"));
+            });
+        });
+    });
+  }
 
   if (Platform.isMobile) {
     advGroup.addSetting((setting) => {
@@ -233,4 +265,26 @@ export function buildAdvancedSection(
         });
     });
   }
+
+  // ── Empty folder handling ──
+  advGroup.addSetting((setting) => {
+    setting
+      .setName(t("settings_cleanemptyfolder"))
+      .setDesc(t("settings_cleanemptyfolder_desc"))
+      .addDropdown((dropdown) => {
+        dropdown.addOption(
+          "clean_both",
+          t("settings_cleanemptyfolder_clean_both")
+        );
+        dropdown.addOption("skip", t("settings_cleanemptyfolder_skip"));
+        dropdown
+          .setValue(plugin.settings.howToCleanEmptyFolder ?? "clean_both")
+          .onChange(async (val) => {
+            plugin.settings.howToCleanEmptyFolder = val as
+              | "skip"
+              | "clean_both";
+            await plugin.saveSettings();
+          });
+      });
+  });
 }

@@ -97,6 +97,8 @@ export interface RemotelySavePluginSettings {
 
   obfuscateSettingFile?: boolean;
 
+  showDeveloperOptions?: boolean;
+
   enableMobileStatusBar?: boolean;
 
   encryptionMethod?: CipherMethodType;

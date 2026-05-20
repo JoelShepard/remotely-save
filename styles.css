@@ -1,6 +1,9 @@
-/* set the styles */
+/* Remote Sync — settings styles */
 
-.password-second-confirm {
+/* ── Modal confirmation buttons ── */
+.password-second-confirm,
+.encryptionmethod-second-confirm,
+.remotebasedir-second-confirm {
   font-weight: bold;
 }
 
@@ -8,19 +11,7 @@
   font-weight: bold;
 }
 
-.encryptionmethod-second-confirm {
-  font-weight: bold;
-}
-
-.settings-auth-related {
-  border-top: 1px solid var(--background-modifier-border);
-  padding-top: 18px;
-}
-
-.settings-percentage-custom-hide {
-  display: none;
-}
-
+/* ── Hidden states ── */
 .settings-encryption-method-hide {
   display: none;
 }
@@ -39,31 +30,93 @@
   display: none;
 }
 
-.webdav-customheaders-textarea {
-  font-family: monospace;
+/* ── Textareas ── */
+.webdav-customheaders-textarea,
+.ignorepaths-textarea,
+.onlyallowpaths-textarea {
+  font-family: var(--font-monospace);
 }
 
+/* ── QR code ── */
 .qrcode-img {
   width: 350px;
   height: 350px;
 }
 
-.ignorepaths-textarea {
-  font-family: monospace;
-}
-
-.onlyallowpaths-textarea {
-  font-family: monospace;
-}
-
-.logtohttpserver-warning {
-  color: red;
-  font-weight: bolder;
-}
-
+/* ── Grid wrapping for complex settings ── */
 .setting-need-wrapping .setting-item-control {
-  /* flex-wrap: wrap; */
   display: grid;
 }
 
+/* ── Service selector cards ── */
+.rs-service-selector {
+  display: flex;
+  gap: 1em;
+  margin-top: 0.5em;
+}
 
+.rs-service-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5em;
+  padding: 1em 1.5em;
+  border: 2px solid var(--background-modifier-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--background-primary-alt);
+  user-select: none;
+  flex: 1;
+  max-width: 180px;
+}
+
+.rs-service-card:hover {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.rs-service-card-selected {
+  border-color: var(--interactive-accent);
+  background: var(--interactive-accent-hover);
+  color: var(--text-on-accent);
+}
+
+.rs-service-card svg {
+  width: 48px;
+  height: 48px;
+}
+
+.rs-service-card-selected svg {
+  color: var(--text-on-accent);
+}
+
+/* ── Logs viewer ── */
+.rs-logs-preview {
+  width: 100%;
+  max-height: 200px;
+  font-family: var(--font-monospace);
+  font-size: 0.8em;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 0.5em;
+  resize: vertical;
+  color: var(--text-normal);
+}
+
+.rs-logs-actions {
+  display: flex;
+  gap: 0.5em;
+  flex-wrap: wrap;
+  margin-top: 0.5em;
+}
+
+.rs-logs-actions select {
+  flex: 0 0 auto;
+}
+
+/* ── SettingGroup spacing ── */
+.setting-group-header {
+  margin-top: 1.5em;
+}

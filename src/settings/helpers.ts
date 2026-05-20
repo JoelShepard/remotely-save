@@ -1,5 +1,6 @@
 import { Eye, EyeOff, createElement } from "lucide";
 import { Setting, type TextComponent } from "obsidian";
+import type { SUPPORTED_SERVICES_TYPE } from "../baseTypes";
 import type { TransItemType } from "../i18n";
 
 export type TFunction = (key: TransItemType, vars?: any) => string;
@@ -28,29 +29,24 @@ export const wrapTextWithPasswordHide = (text: TextComponent) => {
   return text;
 };
 
-export function injectStyles(containerEl: HTMLElement) {
-  const style = containerEl.createEl("style");
-  style.textContent = `
-.rs-logs-preview {
-  width: 100%;
-  max-height: 400px;
-  font-family: var(--font-monospace);
-  font-size: 0.8em;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  padding: 0.5em;
-  resize: vertical;
-  color: var(--text-normal);
+/** Render a service selector card */
+export function renderServiceCard(
+  container: HTMLElement,
+  serviceType: SUPPORTED_SERVICES_TYPE,
+  iconSvg: string,
+  label: string,
+  isSelected: boolean,
+  onClick: () => void
+): HTMLElement {
+  const card = container.createEl("div", {
+    cls: `rs-service-card${isSelected ? " rs-service-card-selected" : ""}`,
+  });
+  card.innerHTML = iconSvg;
+  card.createEl("span", { text: label });
+  card.addEventListener("click", onClick);
+  return card;
 }
-.rs-logs-actions {
-  display: flex;
-  gap: 0.5em;
-  flex-wrap: wrap;
-  margin-top: 0.5em;
-}
-.rs-logs-actions select {
-  flex: 0 0 auto;
-}
-`;
+
+export function injectStyles(_containerEl: HTMLElement) {
+  // Styles are now in styles.css — this is kept as a hook for future dynamic styles
 }

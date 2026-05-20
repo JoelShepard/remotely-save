@@ -77,6 +77,7 @@ const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   protectModifyPercentage: 50,
   syncDirection: "bidirectional",
   obfuscateSettingFile: true,
+  showDeveloperOptions: false,
   enableMobileStatusBar: false,
   encryptionMethod: "unknown",
   profiler: DEFAULT_PROFILER_CONFIG,
