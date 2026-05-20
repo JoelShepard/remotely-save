@@ -58,6 +58,7 @@ Then in Obsidian: **Settings → Community Plugins → Remote Sync → Enable**.
 - Documentation lives in `docs/` (~55 markdown files across 6 subdirectories).
 - The plugin manifest and config are in `manifest.json` and `manifest-beta.json`.
 - Version compatibility is tracked in `versions.json`.
+- Git tags follow the `X.Y.Z` format (no leading `v`), e.g., `0.7.0`.
 - License: Apache 2.0 (see `LICENSE`).
 - Root-level config files: `tsconfig.json`, `biome.json`, `.editorconfig`, `styles.css`, `url-shim.js`, `.env.example.txt`.
 - Legal/contributing: `CLA.md`, `CONTRIBUTING.md`.

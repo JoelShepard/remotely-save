@@ -27,7 +27,7 @@ Update the version string in the following files to the new `X.Y.Z` version:
 - `manifest.json`
 - `manifest-beta.json` (used by BRAT beta channel)
 
-*Note: The tag MUST follow the `vX.Y.Z` format (e.g., `v0.6.2`).*
+*Note: The tag MUST follow the `X.Y.Z` format (e.g., `0.7.0`), no leading `v`.*
 *Note: Update `versions.json` by adding the new version and its corresponding minimum Obsidian version (usually the current `minAppVersion`).*
 
 ---
@@ -56,12 +56,12 @@ npm run build2
 
 ## 4. Commit and Tag
 
-Add all changes, commit the version bump, and create a git tag. The tag MUST start with `v`.
+Add all changes, commit the version bump, and create a git tag. The tag MUST NOT start with `v`.
 
 ```bash
 git add -A
 git commit -m "bump to X.Y.Z"
-git tag -a vX.Y.Z -m "vX.Y.Z"
+git tag -a X.Y.Z -m "X.Y.Z"
 ```
 
 ---
@@ -79,5 +79,5 @@ git push origin master --tags
 Use the `gh` CLI to create the release and attach the required assets (`main.js`, `manifest.json`, and `styles.css` if applicable).
 
 ```bash
-gh release create vX.Y.Z main.js manifest.json styles.css --title "vX.Y.Z" --notes "Release notes"
+gh release create X.Y.Z main.js manifest.json styles.css --title "X.Y.Z" --notes "Release notes"
 ```
