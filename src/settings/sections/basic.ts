@@ -1,9 +1,5 @@
 import { Notice, Platform, type Setting, type SettingGroup } from "obsidian";
 import type { CipherMethodType } from "../../baseTypes";
-import {
-  upsertLastFailedSyncTimeByVault,
-  upsertLastSuccessSyncTimeByVault,
-} from "../../localdb";
 import type RemotelySavePlugin from "../../main";
 import { stringToFragment } from "../../misc";
 import type { TFunction } from "../helpers";
@@ -169,29 +165,6 @@ export function buildBasicSection(
               await plugin.saveSettings();
               new Notice(t("settings_enablestatusbar_reloadrequired_notice"));
             });
-        });
-    });
-
-    basicGroup.addSetting((setting) => {
-      setting
-        .setName(t("settings_resetstatusbar_time"))
-        .setDesc(t("settings_resetstatusbar_time_desc"))
-        .addButton((button) => {
-          button.setButtonText(t("settings_resetstatusbar_button"));
-          button.onClick(async () => {
-            await upsertLastSuccessSyncTimeByVault(
-              plugin.db,
-              plugin.vaultRandomID,
-              -1
-            );
-            await upsertLastFailedSyncTimeByVault(
-              plugin.db,
-              plugin.vaultRandomID,
-              -1
-            );
-            plugin.updateLastSyncMsg(undefined, "not_syncing", null, null);
-            new Notice(t("settings_resetstatusbar_notice"));
-          });
         });
     });
   }

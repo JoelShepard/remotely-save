@@ -1,5 +1,4 @@
 import { Platform, type Setting, type SettingGroup } from "obsidian";
-import type { TextComponent } from "obsidian";
 import type { ConflictActionType, SyncDirectionType } from "../../baseTypes";
 import type RemotelySavePlugin from "../../main";
 import { changeMobileStatusBar } from "../../misc";
@@ -147,82 +146,27 @@ export function buildAdvancedSection(
       });
   });
 
-  let percentage1!: Setting;
-  let percentage2!: Setting;
-  let percentage2Text: TextComponent | undefined = undefined;
-
   advGroup.addSetting((setting) => {
-    percentage1 = setting;
     setting
       .setName(t("settings_protectmodifypercentage"))
-      .setDesc(t("settings_protectmodifypercentage_desc"));
-  });
-
-  advGroup.addSetting((setting) => {
-    percentage2 = setting;
-    if ((plugin.settings.protectModifyPercentage ?? 50) % 10 === 0) {
-      setting.settingEl.addClass("settings-percentage-custom-hide");
-    }
-    setting
-      .setName(t("settings_protectmodifypercentage_customfield"))
-      .setDesc(t("settings_protectmodifypercentage_customfield_desc"))
+      .setDesc(t("settings_protectmodifypercentage_desc"))
       .addText((text) => {
         text.inputEl.type = "number";
-        percentage2Text = text;
+        text.inputEl.min = "0";
+        text.inputEl.max = "100";
         text
-          .setPlaceholder("0 ~ 100")
+          .setPlaceholder("50")
           .setValue(`${plugin.settings.protectModifyPercentage ?? 50}`)
           .onChange(async (val) => {
             let k = Number.parseFloat(val.trim());
-            if (Number.isNaN(k)) {
-            } else {
-              if (k < 0) {
-                k = 0;
-              } else if (k > 100) {
-                k = 100;
-              }
+            if (!Number.isNaN(k)) {
+              if (k < 0) k = 0;
+              else if (k > 100) k = 100;
               plugin.settings.protectModifyPercentage = k;
               await plugin.saveSettings();
             }
           });
       });
-  });
-
-  percentage1.addDropdown((dropdown) => {
-    for (const i of Array.from({ length: 11 }, (x, i) => i * 10)) {
-      let desc = `${i}`;
-      if (i === 0) {
-        desc = t("settings_protectmodifypercentage_000_desc");
-      } else if (i === 50) {
-        desc = t("settings_protectmodifypercentage_050_desc");
-      } else if (i === 100) {
-        desc = t("settings_protectmodifypercentage_100_desc");
-      }
-      dropdown.addOption(`${i}`, desc);
-    }
-    dropdown.addOption(
-      "custom",
-      t("settings_protectmodifypercentage_custom_desc")
-    );
-
-    const p = plugin.settings.protectModifyPercentage ?? 50;
-    let initVal = "custom";
-    if (p % 10 === 0) {
-      initVal = `${p}`;
-    } else {
-      percentage2.settingEl.removeClass("settings-percentage-custom");
-    }
-    dropdown.setValue(initVal).onChange(async (val) => {
-      const k = Number.parseInt(val);
-      if (val === "custom" || Number.isNaN(k)) {
-        percentage2.settingEl.removeClass("settings-percentage-custom-hide");
-      } else {
-        plugin.settings.protectModifyPercentage = k;
-        percentage2.settingEl.addClass("settings-percentage-custom-hide");
-        percentage2Text?.setValue(`${k}`);
-        await plugin.saveSettings();
-      }
-    });
   });
 
   advGroup.addSetting((setting) => {

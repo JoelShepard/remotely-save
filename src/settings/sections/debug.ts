@@ -1,17 +1,14 @@
-import { Notice, Setting, type SettingGroup } from "obsidian";
+import { Notice, Platform, Setting, type SettingGroup } from "obsidian";
 import { messyConfigToNormal } from "../../configPersist";
-import {
-  exportVaultProfilerResultsToFiles,
-  exportVaultSyncPlansToFiles,
-} from "../../debugMode";
+import { exportVaultSyncPlansToFiles } from "../../debugMode";
 import {
   clearAllPrevSyncRecordByVault,
   clearAllSyncPlanRecords,
   destroyDBs,
+  upsertLastFailedSyncTimeByVault,
+  upsertLastSuccessSyncTimeByVault,
 } from "../../localdb";
 import type RemotelySavePlugin from "../../main";
-import { stringToFragment } from "../../misc";
-import { DEFAULT_PROFILER_CONFIG } from "../../profiler";
 import type { TFunction } from "../helpers";
 
 export function buildDebugSection(
@@ -74,11 +71,7 @@ export function buildDebugSection(
       });
   });
 
-  debugGroup.addSetting((setting) => {
-    setting
-      .setName(t("settings_viewconsolelog"))
-      .setDesc(stringToFragment(t("settings_viewconsolelog_desc")));
-  });
+
 
   debugGroup.addSetting((setting) => {
     setting.setHeading().setName(t("settings_syncplans"));
@@ -103,62 +96,7 @@ export function buildDebugSection(
       });
   });
 
-  debugGroup.addSetting((setting) => {
-    setting
-      .setName(t("settings_syncplans_button_5_only_change"))
-      .setDesc(t("settings_syncplans_desc"))
-      .addButton(async (button) => {
-        button.setButtonText("Export");
-        button.onClick(async () => {
-          await exportVaultSyncPlansToFiles(
-            plugin.db,
-            plugin.app.vault,
-            plugin.vaultRandomID,
-            5,
-            true
-          );
-          new Notice(t("settings_syncplans_notice"));
-        });
-      });
-  });
 
-  debugGroup.addSetting((setting) => {
-    setting
-      .setName(t("settings_syncplans_button_1"))
-      .setDesc(t("settings_syncplans_desc"))
-      .addButton(async (button) => {
-        button.setButtonText("Export");
-        button.onClick(async () => {
-          await exportVaultSyncPlansToFiles(
-            plugin.db,
-            plugin.app.vault,
-            plugin.vaultRandomID,
-            1,
-            false
-          );
-          new Notice(t("settings_syncplans_notice"));
-        });
-      });
-  });
-
-  debugGroup.addSetting((setting) => {
-    setting
-      .setName(t("settings_syncplans_button_5"))
-      .setDesc(t("settings_syncplans_desc"))
-      .addButton(async (button) => {
-        button.setButtonText("Export");
-        button.onClick(async () => {
-          await exportVaultSyncPlansToFiles(
-            plugin.db,
-            plugin.app.vault,
-            plugin.vaultRandomID,
-            5,
-            false
-          );
-          new Notice(t("settings_syncplans_notice"));
-        });
-      });
-  });
 
   debugGroup.addSetting((setting) => {
     setting
@@ -205,81 +143,30 @@ export function buildDebugSection(
       });
   });
 
-  debugGroup.addSetting((setting) => {
-    setting
-      .setName(t("settings_profiler_results"))
-      .setDesc(t("settings_profiler_results_desc"))
-      .addButton(async (button) => {
-        button.setButtonText(t("settings_profiler_results_button_all"));
-        button.onClick(async () => {
-          await exportVaultProfilerResultsToFiles(
-            plugin.db,
-            plugin.app.vault,
-            plugin.vaultRandomID
-          );
-          new Notice(t("settings_profiler_results_notice"));
+  if (!Platform.isMobileApp) {
+    debugGroup.addSetting((setting) => {
+      setting
+        .setName(t("settings_resetstatusbar_time"))
+        .setDesc(t("settings_resetstatusbar_time_desc"))
+        .addButton((button) => {
+          button.setButtonText(t("settings_resetstatusbar_button"));
+          button.onClick(async () => {
+            await upsertLastSuccessSyncTimeByVault(
+              plugin.db,
+              plugin.vaultRandomID,
+              -1
+            );
+            await upsertLastFailedSyncTimeByVault(
+              plugin.db,
+              plugin.vaultRandomID,
+              -1
+            );
+            plugin.updateLastSyncMsg(undefined, "not_syncing", null, null);
+            new Notice(t("settings_resetstatusbar_notice"));
+          });
         });
-      });
-  });
-
-  debugGroup.addSetting((setting) => {
-    setting
-      .setName(t("settings_profiler_enableprofiler"))
-      .setDesc(t("settings_profiler_enableprofiler_desc"))
-      .addDropdown((dropdown) => {
-        dropdown.addOption("enable", t("enable"));
-        dropdown.addOption("disable", t("disable"));
-        dropdown
-          .setValue(plugin.settings.profiler?.enable ? "enable" : "disable")
-          .onChange(async (val: string) => {
-            if (plugin.settings.profiler === undefined) {
-              plugin.settings.profiler = DEFAULT_PROFILER_CONFIG;
-            }
-            plugin.settings.profiler.enable = val === "enable";
-            await plugin.saveSettings();
-          });
-      });
-  });
-
-  debugGroup.addSetting((setting) => {
-    setting
-      .setName(t("settings_profiler_enabledebugprint"))
-      .setDesc(t("settings_profiler_enabledebugprint_desc"))
-      .addDropdown((dropdown) => {
-        dropdown.addOption("enable", t("enable"));
-        dropdown.addOption("disable", t("disable"));
-        dropdown
-          .setValue(
-            plugin.settings.profiler?.enablePrinting ? "enable" : "disable"
-          )
-          .onChange(async (val: string) => {
-            if (plugin.settings.profiler === undefined) {
-              plugin.settings.profiler = DEFAULT_PROFILER_CONFIG;
-            }
-            plugin.settings.profiler.enablePrinting = val === "enable";
-            await plugin.saveSettings();
-          });
-      });
-  });
-
-  debugGroup.addSetting((setting) => {
-    setting
-      .setName(t("settings_profiler_recordsize"))
-      .setDesc(t("settings_profiler_recordsize_desc"))
-      .addDropdown((dropdown) => {
-        dropdown.addOption("enable", t("enable"));
-        dropdown.addOption("disable", t("disable"));
-        dropdown
-          .setValue(plugin.settings.profiler?.recordSize ? "enable" : "disable")
-          .onChange(async (val: string) => {
-            if (plugin.settings.profiler === undefined) {
-              plugin.settings.profiler = DEFAULT_PROFILER_CONFIG;
-            }
-            plugin.settings.profiler.recordSize = val === "enable";
-            await plugin.saveSettings();
-          });
-      });
-  });
+    });
+  }
 
   debugGroup.addSetting((setting) => {
     setting

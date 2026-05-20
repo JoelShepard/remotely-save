@@ -11,31 +11,26 @@ export function buildImportExportSection(
   plugin: RemotelySavePlugin,
   t: TFunction
 ) {
+  let exportType: "basic_and_advanced" | "s3" | "webdav" = "basic_and_advanced";
   importExportGroup.addSetting((setting) => {
     setting
       .setName(t("settings_export"))
       .setDesc(t("settings_export_desc"))
       .setClass("setting-need-wrapping")
-      .addButton(async (button) => {
-        button.setButtonText(t("settings_export_basic_and_advanced_button"));
-        button.onClick(async () => {
-          new ExportSettingsQrCodeModal(
-            plugin.app,
-            plugin,
-            "basic_and_advanced"
-          ).open();
-        });
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption("basic_and_advanced", t("settings_export_basic_and_advanced_button"))
+          .addOption("s3", t("settings_export_s3_button"))
+          .addOption("webdav", t("settings_export_webdav_button"))
+          .setValue("basic_and_advanced")
+          .onChange((val) => {
+            exportType = val as typeof exportType;
+          });
       })
-      .addButton(async (button) => {
-        button.setButtonText(t("settings_export_s3_button"));
-        button.onClick(async () => {
-          new ExportSettingsQrCodeModal(plugin.app, plugin, "s3").open();
-        });
-      })
-      .addButton(async (button) => {
-        button.setButtonText(t("settings_export_webdav_button"));
-        button.onClick(async () => {
-          new ExportSettingsQrCodeModal(plugin.app, plugin, "webdav").open();
+      .addButton((button) => {
+        button.setButtonText("Export");
+        button.onClick(() => {
+          new ExportSettingsQrCodeModal(plugin.app, plugin, exportType).open();
         });
       });
   });
