@@ -81,8 +81,8 @@ export class LogViewerModal extends Modal {
 
     // Clear button
     const clearBtn = toolbar.createEl("button", { text: "🗑 Clear" });
-    clearBtn.addEventListener("click", () => {
-      clearLogs();
+    clearBtn.addEventListener("click", async () => {
+      await clearLogs();
       this.refreshLogs();
     });
 

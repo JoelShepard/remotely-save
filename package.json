@@ -1,6 +1,6 @@
 {
   "name": "remote-sync",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "This is yet another sync plugin for Obsidian app.",
   "scripts": {
     "dev2": "node esbuild.config.mjs --watch",
@@ -35,7 +35,6 @@
     "@types/mustache": "^4.2.5",
     "@types/node": "^20.14.12",
     "@types/qrcode": "^1.5.5",
-    "builtin-modules": "^4.0.0",
     "cross-env": "^7.0.3",
     "dotenv": "^16.4.5",
     "esbuild": "^0.23.0",

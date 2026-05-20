@@ -50,6 +50,12 @@ jobs:
       - run: npm install
       - run: npm test
       - run: npm run build
+      - name: Generate artifact attestations
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            main.js
+            styles.css
       - name: Create Release And Upload
         uses: softprops/action-gh-release@v2
         with:

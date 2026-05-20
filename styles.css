@@ -197,13 +197,14 @@
 }
 
 /* ── Inline Validation ── */
-.rs-valid {
-  border-color: var(--color-green) !important;
+/* Extra specificity to override Obsidian base styles */
+.setting-item .rs-valid {
+  border-color: var(--color-green);
   box-shadow: 0 0 0 1px var(--color-green);
 }
 
-.rs-invalid {
-  border-color: var(--color-red) !important;
+.setting-item .rs-invalid {
+  border-color: var(--color-red);
   box-shadow: 0 0 0 1px var(--color-red);
 }
 
@@ -227,7 +228,12 @@
 
 /* Hide all settings within a collapsed group, except the header */
 .rs-group-collapsed > .setting-item:not(.setting-group-header) {
-  display: none !important;
+  display: none;
+}
+
+/* Extra specificity for Obsidian base style overrides */
+.setting-item.rs-group-collapsed > .setting-item:not(.setting-group-header) {
+  display: none;
 }
 
 /* ── Connection Test Result Modal ── */

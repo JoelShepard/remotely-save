@@ -35,6 +35,8 @@ esbuild
       "http",
       "https",
       "vm",
+      "lie",
+      "immediate",
       // "process",
       // ...builtins
     ],

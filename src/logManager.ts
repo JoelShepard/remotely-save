@@ -1,3 +1,5 @@
+import localforage from "localforage";
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface LogEntry {
@@ -7,7 +9,7 @@ export interface LogEntry {
 }
 
 const MAX_ENTRIES = 5000;
-const PERSIST_KEY = "remote-sync-logs";
+const STORE_KEY = "remote-sync-logs";
 let entries: LogEntry[] = [];
 let intercepting = false;
 
@@ -71,41 +73,38 @@ export function getLogsAsText(filterLevel?: LogLevel): string {
     .join("\n");
 }
 
-export function clearLogs() {
+export async function clearLogs() {
   entries = [];
-  persistToLocalStorage();
+  await persistLogs();
 }
 
-// ── Persistence ──
+// ── Persistence via localforage (IndexedDB) ──
 
-export function persistToLocalStorage(): void {
+export async function persistLogs(): Promise<void> {
   try {
     const toStore = entries.slice(-1000); // keep last 1000 in storage
-    localStorage.setItem(PERSIST_KEY, JSON.stringify(toStore));
+    await localforage.setItem(STORE_KEY, toStore);
   } catch {
     // storage full or unavailable, silently ignore
   }
 }
 
-export function loadFromLocalStorage(): void {
+export async function loadLogs(): Promise<void> {
   try {
-    const stored = localStorage.getItem(PERSIST_KEY);
-    if (stored) {
-      const parsed: LogEntry[] = JSON.parse(stored);
-      if (Array.isArray(parsed)) {
-        // Merge stored entries with current, avoiding duplicates by timestamp
-        const existingTimestamps = new Set(entries.map((e) => e.timestamp));
-        for (const entry of parsed) {
-          if (!existingTimestamps.has(entry.timestamp)) {
-            entries.push(entry);
-          }
+    const stored = await localforage.getItem<LogEntry[]>(STORE_KEY);
+    if (stored && Array.isArray(stored)) {
+      // Merge stored entries with current, avoiding duplicates by timestamp
+      const existingTimestamps = new Set(entries.map((e) => e.timestamp));
+      for (const entry of stored) {
+        if (!existingTimestamps.has(entry.timestamp)) {
+          entries.push(entry);
         }
-        // Sort by timestamp
-        entries.sort((a, b) => a.timestamp - b.timestamp);
-        // Trim to max
-        if (entries.length > MAX_ENTRIES)
-          entries.splice(0, entries.length - MAX_ENTRIES);
       }
+      // Sort by timestamp
+      entries.sort((a, b) => a.timestamp - b.timestamp);
+      // Trim to max
+      if (entries.length > MAX_ENTRIES)
+        entries.splice(0, entries.length - MAX_ENTRIES);
     }
   } catch {
     // ignore parse errors
@@ -115,6 +114,6 @@ export function loadFromLocalStorage(): void {
 // Persist periodically
 setInterval(() => {
   if (intercepting && entries.length > 0) {
-    persistToLocalStorage();
+    persistLogs();
   }
 }, 30000);

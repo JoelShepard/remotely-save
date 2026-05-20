@@ -14,6 +14,7 @@ module.exports = {
     filename: "main.js",
     path: __dirname,
     libraryTarget: "commonjs",
+    chunkLoading: false,
   },
   plugins: [
     // Handle node: protocol imports (e.g. node:url from clean-stack)
@@ -72,6 +73,17 @@ module.exports = {
   resolve: {
     alias: {
       url: require.resolve("./url-shim"),
+      // Use localforage source (ES module) instead of the dist bundle.
+      // This lets webpack tree-shake the `lie` Promise polyfill,
+      // which contains document.createElement("script") dead code that
+      // the Obsidian review tool flags.
+      localforage: path.resolve(
+        __dirname,
+        "node_modules/localforage/src/localforage.js"
+      ),
+      // Obsidian (Electron/Chromium) has native Promise so the polyfill
+      // is dead code.
+      "lie/polyfill": false,
     },
     extensions: [".tsx", ".ts", ".js"],
     mainFields: ["browser", "module", "main"],

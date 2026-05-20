@@ -50,7 +50,7 @@ import {
 } from "./localdb";
 import type { ErrorHistoryRecord } from "./localdb";
 import {
-  loadFromLocalStorage,
+  loadLogs,
   startLogInterception,
   stopLogInterception,
 } from "./logManager";
@@ -550,7 +550,7 @@ export default class RemotelySavePlugin extends Plugin {
   async onload() {
     console.info(`loading plugin ${this.manifest.id}`);
     startLogInterception();
-    loadFromLocalStorage();
+    await loadLogs();
 
     const { iconSvgSyncWait, iconSvgSyncRunning, iconSvgLogs } = getIconSvg();
 
