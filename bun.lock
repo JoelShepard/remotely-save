@@ -52,7 +52,6 @@
         "@types/mustache": "^4.2.5",
         "@types/node": "^20.14.12",
         "@types/qrcode": "^1.5.5",
-        "builtin-modules": "^4.0.0",
         "cross-env": "^7.0.3",
         "dotenv": "^16.4.5",
         "esbuild": "^0.23.0",
@@ -582,8 +581,6 @@
     "buffer-from": ["buffer-from@1.1.2", "", {}, "sha512-E+XQCRwSbaaiChtv6k6Dwgc+bx+Bs6vuKJHHl5kox/BaKbhiXzqQOwK4cO22yElGp2OCmjwVhT3HmxgyPGnJfQ=="],
 
     "buffer-xor": ["buffer-xor@1.0.3", "", {}, "sha512-571s0T7nZWK6vB67HI5dyUF7wXiNcfaPPPTl6zYCNApANjIvYJTg7hlud/+cJpdAhS7dVzqMLmfhfHR3rAcOjQ=="],
-
-    "builtin-modules": ["builtin-modules@4.0.0", "", {}, "sha512-p1n8zyCkt1BVrKNFymOHjcDSAl7oq/gUvfgULv2EblgpPVQlQr9yHnWjg9IJ2MhfwPqiYqMMrr01OY7yQoK2yA=="],
 
     "byte-length": ["byte-length@1.0.2", "", {}, "sha512-ovBpjmsgd/teRmgcPh23d4gJvxDoXtAzEL9xTfMU8Yc2kqCDb7L9jAG0XHl1nzuGl+h3ebCIF1i62UFyA9V/2Q=="],
 
