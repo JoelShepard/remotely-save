@@ -1,10 +1,10 @@
-import type { CipherMethodType, Entity } from "./baseTypes";
+import type { CipherMethodType, Entity, RemoteManifest } from "./baseTypes";
 import * as openssl from "./encryptOpenSSL";
 import * as rclone from "./encryptRClone";
 import { isSpecialFolderNameToSkip, isVaildText } from "./misc";
 
 import cloneDeep from "lodash/cloneDeep";
-import { FakeFs } from "./fsAll";
+import { FakeFs, type RemoteManifestStat, type RemoteSnapshot } from "./fsAll";
 
 /**
  * quick guess, no actual decryption here
@@ -406,6 +406,17 @@ export class FakeFsEncrypt extends FakeFs {
     await this.innerFs.rm(keyEnc);
   }
 
+  async rmBatch(keys: string[]): Promise<void> {
+    const encKeys: string[] = [];
+    for (const key of keys) {
+      const keyEnc = this.password === "" ? key : await this._encryptName(key);
+      this.cacheMapOrigToEnc[key] = keyEnc;
+      this.hasCacheMap = true;
+      encKeys.push(keyEnc);
+    }
+    await this.innerFs.rmBatch(encKeys);
+  }
+
   async writeFileSingle(
     key: string,
     content: ArrayBuffer,
@@ -639,5 +650,34 @@ export class FakeFsEncrypt extends FakeFs {
 
   allowEmptyFile(): boolean {
     return true;
+  }
+
+  async checkRemoteChanges(): Promise<RemoteSnapshot | null> {
+    return await this.innerFs.checkRemoteChanges();
+  }
+
+  // ── Remote Manifest delegation ──
+
+  async readManifest(vaultRandomID: string): Promise<RemoteManifest | null> {
+    return this.innerFs.readManifest(vaultRandomID);
+  }
+
+  async writeManifest(
+    vaultRandomID: string,
+    manifest: RemoteManifest
+  ): Promise<void> {
+    return this.innerFs.writeManifest(vaultRandomID, manifest);
+  }
+
+  async statManifest(
+    vaultRandomID: string
+  ): Promise<RemoteManifestStat | null> {
+    return this.innerFs.statManifest(vaultRandomID);
+  }
+
+  async walkFromManifest(manifest: RemoteManifest): Promise<Entity[]> {
+    const entities = await this.innerFs.walkFromManifest(manifest);
+    this.manifestBasedWalk = this.innerFs.manifestBasedWalk;
+    return entities;
   }
 }

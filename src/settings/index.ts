@@ -4,12 +4,15 @@ import type { SUPPORTED_SERVICES_TYPE } from "../baseTypes";
 import type { TransItemType } from "../i18n";
 import type RemotelySavePlugin from "../main";
 import type { TFunction } from "./helpers";
-import { injectStyles, renderServiceCard } from "./helpers";
+import {
+  injectStyles,
+  makeGroupCollapsible,
+  renderServiceCard,
+} from "./helpers";
 import { buildAdvancedSection } from "./sections/advanced";
 import { buildDebugSection } from "./sections/debug";
 import { buildEncryptionSection } from "./sections/encryption";
 import { buildImportExportSection } from "./sections/importExport";
-import { buildLogsSection } from "./sections/logs";
 import { buildS3Section } from "./sections/s3";
 import { buildWebdavSection } from "./sections/webdav";
 
@@ -73,82 +76,67 @@ export class RemotelySaveSettingTab extends PluginSettingTab {
 
     // ── Remote Service Config ──
     if (this.plugin.settings.serviceType === "s3") {
-      const s3Group = new SettingGroup(containerEl).setHeading(
+      const s3Wrapper = containerEl.createDiv({ cls: "rs-group-wrapper" });
+      const s3Group = new SettingGroup(s3Wrapper).setHeading(
         "☁️ " + t("settings_s3")
       );
       buildS3Section(s3Group, this.plugin, this.app, t);
+      makeGroupCollapsible(s3Wrapper, this.plugin, "s3");
     } else if (this.plugin.settings.serviceType === "webdav") {
-      const webdavGroup = new SettingGroup(containerEl).setHeading(
+      const wdWrapper = containerEl.createDiv({ cls: "rs-group-wrapper" });
+      const webdavGroup = new SettingGroup(wdWrapper).setHeading(
         "🗄️ " + t("settings_webdav")
       );
       buildWebdavSection(webdavGroup, this.plugin, this.app, t);
+      makeGroupCollapsible(wdWrapper, this.plugin, "webdav");
     }
 
     // ── Encryption ──
-    buildEncryptionSection(
-      new SettingGroup(containerEl).setHeading(
-        "🔒 " + t("settings_encryption")
-      ),
-      this.plugin,
-      t
+    const encWrapper = containerEl.createDiv({ cls: "rs-group-wrapper" });
+    const encGroup = new SettingGroup(encWrapper).setHeading(
+      "🔒 " + t("settings_encryption")
     );
+    buildEncryptionSection(encGroup, this.plugin, t);
+    makeGroupCollapsible(encWrapper, this.plugin, "encryption");
 
     // ── Sync Triggers ──
-    const triggersGroup = new SettingGroup(containerEl).setHeading(
+    const trigWrapper = containerEl.createDiv({ cls: "rs-group-wrapper" });
+    const triggersGroup = new SettingGroup(trigWrapper).setHeading(
       "⚡ " + t("settings_sync_triggers")
     );
     this.buildSyncTriggersSection(triggersGroup, t);
+    makeGroupCollapsible(trigWrapper, this.plugin, "syncTriggers");
 
     // ── Path Filters ──
-    const pathGroup = new SettingGroup(containerEl).setHeading(
+    const pathWrapper = containerEl.createDiv({ cls: "rs-group-wrapper" });
+    const pathGroup = new SettingGroup(pathWrapper).setHeading(
       "📂 " + t("settings_path_filters")
     );
     this.buildPathFiltersSection(pathGroup, t);
+    makeGroupCollapsible(pathWrapper, this.plugin, "pathFilters");
 
     // ── Advanced Settings ──
-    buildAdvancedSection(
-      new SettingGroup(containerEl).setHeading("⚙️ " + t("settings_adv")),
-      this.plugin,
-      t
+    const advWrapper = containerEl.createDiv({ cls: "rs-group-wrapper" });
+    const advGroup = new SettingGroup(advWrapper).setHeading(
+      "⚙️ " + t("settings_adv")
     );
+    buildAdvancedSection(advGroup, this.plugin, t);
+    makeGroupCollapsible(advWrapper, this.plugin, "advanced");
 
     // ── Import / Export ──
-    const ieGroup = new SettingGroup(containerEl).setHeading(
+    const ieWrapper = containerEl.createDiv({ cls: "rs-group-wrapper" });
+    const ieGroup = new SettingGroup(ieWrapper).setHeading(
       "📦 " + t("settings_importexport")
     );
     buildImportExportSection(ieGroup, this.plugin, t);
+    makeGroupCollapsible(ieWrapper, this.plugin, "importExport");
 
-    // ── Debug ──
-    const debugGroup = new SettingGroup(containerEl).setHeading(
-      "🐛 " + t("settings_debug")
+    // ── Troubleshooting (always visible, not collapsible) ──
+    buildDebugSection(
+      new SettingGroup(containerEl).setHeading("🛠️ " + t("settings_debug")),
+      this.plugin,
+      t
     );
-
-    // Dev mode toggle inside debug section
-    debugGroup.addSetting((setting: Setting) => {
-      setting
-        .setName(t("settings_showdevoptions"))
-        .setDesc(t("settings_showdevoptions_desc"))
-        .addToggle((toggle) => {
-          toggle
-            .setValue(this.plugin.settings.showDeveloperOptions ?? false)
-            .onChange(async (val: boolean) => {
-              this.plugin.settings.showDeveloperOptions = val;
-              await this.plugin.saveSettings();
-              this.display();
-            });
-        });
-    });
-
-    buildDebugSection(debugGroup, this.plugin, t);
-
-    // Logs: only shown when dev mode is on
-    if (this.plugin.settings.showDeveloperOptions) {
-      buildLogsSection(
-        new SettingGroup(containerEl).setHeading("📋 Logs"),
-        this.plugin,
-        t
-      );
-    }
   }
 
   private buildSyncTriggersSection(group: SettingGroup, t: TFunction): void {

@@ -4,8 +4,13 @@ import { VALID_REQURL } from "../../baseTypesObs";
 import { getClient } from "../../fsGetter";
 import type RemotelySavePlugin from "../../main";
 import { stringToFragment } from "../../misc";
-import type { TFunction } from "../helpers";
-import { wrapTextWithPasswordHide } from "../helpers";
+import {
+  ConnectionTestResultModal,
+  type TFunction,
+  addValidation,
+  urlRule,
+  wrapTextWithPasswordHide,
+} from "../helpers";
 import { ChangeRemoteBaseDirModal } from "../modals";
 
 export function buildWebdavSection(
@@ -55,17 +60,18 @@ export function buildWebdavSection(
   webdavGroup.addSetting((setting) => {
     setting
       .setName(t("settings_webdav_addr"))
-      .setDesc(t("settings_webdav_addr_desc"))
-      .addText((text) =>
+      .setDesc("Must be a valid URL (e.g., https://example.com/webdav)")
+      .addText((text) => {
+        addValidation(text, [urlRule]);
         text
-          .setPlaceholder("")
+          .setPlaceholder("https://example.com/remote.php/webdav")
           .setValue(plugin.settings.webdav.address)
           .onChange(async (value) => {
             plugin.settings.webdav.address = value.trim();
             migrateDepthIfAuto();
             await plugin.saveSettings();
-          })
-      );
+          });
+      });
   });
 
   webdavGroup.addSetting((setting) => {
@@ -200,11 +206,14 @@ export function buildWebdavSection(
   webdavGroup.addSetting((setting) => {
     setting
       .setName(t("settings_checkonnectivity"))
-      .setDesc(t("settings_checkonnectivity_desc"))
+      .setDesc(
+        "Verify that the WebDAV server address and credentials are accessible"
+      )
       .addButton(async (button) => {
         button.setButtonText(t("settings_checkonnectivity_button"));
         button.onClick(async () => {
           new Notice(t("settings_checkonnectivity_checking"));
+          const startTime = Date.now();
           const client = getClient(plugin.settings, app.vault.getName(), () =>
             plugin.saveSettings()
           );
@@ -212,16 +221,16 @@ export function buildWebdavSection(
           const res = await client.checkConnect((err: any) => {
             errors.msg = `${err}`;
           });
-          if (res) {
-            new Notice(t("settings_webdav_connect_succ"));
-          } else {
-            if (VALID_REQURL) {
-              new Notice(t("settings_webdav_connect_fail"));
-            } else {
-              new Notice(t("settings_webdav_connect_fail_withcors"));
-            }
-            new Notice(errors.msg);
-          }
+          const latencyMs = Date.now() - startTime;
+
+          new ConnectionTestResultModal(app, "WebDAV", {
+            success: res,
+            latencyMs,
+            details: res
+              ? "Successfully connected to the WebDAV server and performed read/write/delete test."
+              : undefined,
+            error: res ? undefined : errors.msg || "Unknown error",
+          }).open();
         });
       });
   });

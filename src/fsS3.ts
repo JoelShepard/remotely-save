@@ -4,6 +4,7 @@ import { Readable } from "stream";
 import type { PutObjectCommandInput, _Object } from "@aws-sdk/client-s3";
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
   type HeadObjectCommandOutput,
@@ -27,12 +28,17 @@ import AggregateError from "aggregate-error";
 import * as mime from "mime-types";
 import { Platform, type RequestUrlParam, requestUrl } from "obsidian";
 import PQueue from "p-queue";
-import { DEFAULT_CONTENT_TYPE, type S3Config } from "./baseTypes";
+import {
+  DEFAULT_CONTENT_TYPE,
+  type ManifestEntry,
+  type RemoteManifest,
+  type S3Config,
+} from "./baseTypes";
 import { VALID_REQURL } from "./baseTypesObs";
 import { bufferToArrayBuffer, getFolderLevels } from "./misc";
 
 import type { Entity } from "./baseTypes";
-import { FakeFs } from "./fsAll";
+import { FakeFs, type RemoteManifestStat, type RemoteSnapshot } from "./fsAll";
 
 ////////////////////////////////////////////////////////////////////////////////
 // special handler using Obsidian requestUrl
@@ -356,8 +362,10 @@ const fromS3HeadObjectToEntity = (
   const mtimeSvr = Math.floor(x.LastModified.valueOf() / 1000.0) * 1000;
   let mtimeCli = mtimeSvr;
   if (useAccurateMTime && x.Metadata !== undefined) {
-    const m2 = Math.floor(
-      Number.parseFloat(x.Metadata.mtime || x.Metadata.MTime || "0")
+    // Metadata stores MTime as seconds (float with ms precision): e.g. "1716153600.123"
+    // Parse directly to ms to avoid losing fractional seconds via Math.floor
+    const m2 = Math.round(
+      Number.parseFloat(x.Metadata.mtime || x.Metadata.MTime || "0") * 1000
     );
     if (m2 !== 0) {
       if (m2 >= 1000000000000) {
@@ -399,14 +407,24 @@ export class FakeFsS3 extends FakeFs {
   async walk(): Promise<Entity[]> {
     const res = (
       await this._walkFromRoot(this.s3Config.remotePrefix, false)
-    ).filter((x) => x.key !== "" && x.key !== "/");
+    ).filter(
+      (x) =>
+        x.keyRaw !== "" &&
+        x.keyRaw !== "/" &&
+        !x.keyRaw.startsWith("_rs_state/")
+    );
     return res;
   }
 
   async walkPartial(): Promise<Entity[]> {
     const res = (
       await this._walkFromRoot(this.s3Config.remotePrefix, true)
-    ).filter((x) => x.key !== "" && x.key !== "/");
+    ).filter(
+      (x) =>
+        x.keyRaw !== "" &&
+        x.keyRaw !== "/" &&
+        !x.keyRaw.startsWith("_rs_state/")
+    );
     return res;
   }
 
@@ -462,15 +480,17 @@ export class FakeFsS3 extends FakeFs {
             if (rspHead.Metadata === undefined) {
               // pass
             } else {
-              mtimeRecords[content.Key!] = Math.floor(
+              // Metadata stores timestamps as seconds (float with ms precision).
+              // Convert directly to ms to avoid losing fractional seconds.
+              mtimeRecords[content.Key!] = Math.round(
                 Number.parseFloat(
                   rspHead.Metadata.mtime || rspHead.Metadata.MTime || "0"
-                )
+                ) * 1000
               );
-              ctimeRecords[content.Key!] = Math.floor(
+              ctimeRecords[content.Key!] = Math.round(
                 Number.parseFloat(
                   rspHead.Metadata.ctime || rspHead.Metadata.CTime || "0"
-                )
+                ) * 1000
               );
             }
           });
@@ -770,6 +790,57 @@ export class FakeFsS3 extends FakeFs {
     }
   }
 
+  async rmBatch(keys: string[]): Promise<void> {
+    const CHUNK_SIZE = 1000;
+    const remotePrefix = this.s3Config.remotePrefix ?? "";
+    for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
+      const chunk = keys.slice(i, i + CHUNK_SIZE);
+      const objects = chunk.map((k) => ({
+        Key: getRemoteWithPrefixPath(k, remotePrefix),
+      }));
+      try {
+        const result = await this.s3Client.send(
+          new DeleteObjectsCommand({
+            Bucket: this.s3Config.s3BucketName,
+            Delete: { Objects: objects, Quiet: true },
+          })
+        );
+        if (result.Errors && result.Errors.length > 0) {
+          // Retry failed keys individually
+          for (const err of result.Errors) {
+            if (err.Key) {
+              console.warn(`rmBatch retrying failed key: ${err.Key}`);
+              await this.s3Client.send(
+                new DeleteObjectCommand({
+                  Bucket: this.s3Config.s3BucketName,
+                  Key: err.Key,
+                })
+              );
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(
+          `rmBatch chunk failed, falling back to individual deletes: ${e}`
+        );
+        for (const obj of objects) {
+          try {
+            await this.s3Client.send(
+              new DeleteObjectCommand({
+                Bucket: this.s3Config.s3BucketName,
+                Key: obj.Key,
+              })
+            );
+          } catch (e2) {
+            console.warn(
+              `rmBatch individual delete failed for ${obj.Key}: ${e2}`
+            );
+          }
+        }
+      }
+    }
+  }
+
   async checkConnect(callbackFunc?: any): Promise<boolean> {
     try {
       const confCmd = {
@@ -792,7 +863,7 @@ export class FakeFsS3 extends FakeFs {
     } catch (err: any) {
       console.debug(err);
       if (callbackFunc !== undefined) {
-        if (this.s3Config.s3Endpoint.contains(this.s3Config.s3BucketName)) {
+        if (this.s3Config.s3Endpoint.includes(this.s3Config.s3BucketName)) {
           const err2 = new AggregateError([
             err,
             new Error(
@@ -820,5 +891,253 @@ export class FakeFsS3 extends FakeFs {
 
   allowEmptyFile(): boolean {
     return true;
+  }
+
+  async checkRemoteChanges(): Promise<RemoteSnapshot | null> {
+    try {
+      const confCmd = {
+        Bucket: this.s3Config.s3BucketName,
+        MaxKeys: 200,
+      } as ListObjectsV2CommandInput;
+      if (
+        this.s3Config.remotePrefix !== undefined &&
+        this.s3Config.remotePrefix !== ""
+      ) {
+        confCmd.Prefix = this.s3Config.remotePrefix;
+      }
+
+      const rsp = await this.s3Client.send(new ListObjectsV2Command(confCmd));
+
+      if (!rsp.Contents || rsp.$metadata.httpStatusCode !== 200) {
+        return null;
+      }
+
+      const objectCount = rsp.KeyCount ?? rsp.Contents.length;
+      let newestMtime = 0;
+      const newestItems: { key: string; mtime: number }[] = [];
+
+      for (const obj of rsp.Contents) {
+        const ms = obj.LastModified?.getTime() ?? 0;
+        if (ms > newestMtime) {
+          newestMtime = ms;
+        }
+        newestItems.push({
+          key: obj.Key ?? "",
+          mtime: ms,
+        });
+      }
+
+      // Sort by mtime descending and take up to 10 sample keys
+      newestItems.sort((a, b) => b.mtime - a.mtime);
+      const sampleKeys = newestItems
+        .slice(0, 10)
+        .map((x) => x.key)
+        .filter((k) => k !== "");
+
+      return {
+        objectCount,
+        newestMtime: objectCount > 0 ? newestMtime : null,
+        sampleKeys,
+        capturedAt: Date.now(),
+      };
+    } catch (e) {
+      console.debug(`checkRemoteChanges (S3) failed: ${e}`);
+      return null;
+    }
+  }
+
+  // ── Remote Manifest (PRD S3 Native Manifest Sync) ──
+
+  /**
+   * Get the S3 key for the manifest file.
+   */
+  private getManifestKey(vaultRandomID: string): string {
+    const prefix = this.s3Config.remotePrefix ?? "";
+    return `${prefix}_rs_state/${vaultRandomID}/manifest.json`;
+  }
+
+  async readManifest(vaultRandomID: string): Promise<RemoteManifest | null> {
+    try {
+      const key = this.getManifestKey(vaultRandomID);
+      const data = await this._readFileFromRoot(key);
+      const text = new TextDecoder().decode(data);
+      return JSON.parse(text) as RemoteManifest;
+    } catch {
+      return null;
+    }
+  }
+
+  async writeManifest(
+    vaultRandomID: string,
+    manifest: RemoteManifest
+  ): Promise<void> {
+    const key = this.getManifestKey(vaultRandomID);
+    const json = JSON.stringify(manifest);
+    const data = new TextEncoder().encode(json).buffer;
+    await this._writeFileFromRoot(
+      key,
+      data as ArrayBuffer,
+      Date.now(),
+      Date.now()
+    );
+  }
+
+  async statManifest(
+    vaultRandomID: string
+  ): Promise<RemoteManifestStat | null> {
+    try {
+      const key = this.getManifestKey(vaultRandomID);
+      const rsp = await this.s3Client.send(
+        new HeadObjectCommand({
+          Bucket: this.s3Config.s3BucketName,
+          Key: key,
+        })
+      );
+      return {
+        etag: rsp.ETag ?? "",
+        lastModified: rsp.LastModified?.getTime() ?? null,
+        size: rsp.ContentLength ?? null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Walk the remote using a cached manifest with bounded verification.
+   *
+   * 1. Does a single ListObjectsV2 (up to 1000 keys) to get current ETags.
+   * 2. Compares with the manifest to find new/modified/deleted keys.
+   * 3. If the total object count matches the manifest count AND all ETags match,
+   *    the manifest is fresh → build entities from manifest (no full walk needed).
+   * 4. If there are discrepancies, fall back to the full walk.
+   */
+  async walkFromManifest(manifest: RemoteManifest): Promise<Entity[]> {
+    const remotePrefix = this.s3Config.remotePrefix ?? "";
+    const manifestPath = this.getManifestKey(manifest.vaultRandomID);
+
+    // Step 1: Bounded scan — get up to 1000 keys with ETags
+    const scanCmd = {
+      Bucket: this.s3Config.s3BucketName,
+      Prefix: remotePrefix,
+      MaxKeys: 1000,
+    } as ListObjectsV2CommandInput;
+
+    const rsp = await this.s3Client.send(new ListObjectsV2Command(scanCmd));
+
+    if (!rsp.Contents || rsp.$metadata.httpStatusCode !== 200) {
+      // Can't verify manifest, fall back to full walk
+      console.info("manifest verif scan failed, falling back to full walk");
+      this.manifestBasedWalk = false;
+      return this.walk();
+    }
+
+    // Build a map of remote key → {etag, lastModified} from the scan
+    const scannedEntries = new Map<
+      string,
+      { etag: string; lastModified: number }
+    >();
+    for (const obj of rsp.Contents) {
+      scannedEntries.set(obj.Key!, {
+        etag: obj.ETag ?? "",
+        lastModified: obj.LastModified?.getTime() ?? 0,
+      });
+    }
+
+    // Exclude the manifest file itself from comparison
+    scannedEntries.delete(manifestPath);
+
+    const manifestCount = Object.keys(manifest.files).length;
+    const scanCount = scannedEntries.size;
+    const isTruncated = rsp.IsTruncated ?? false;
+
+    // Step 2: Check if manifest is fresh
+    let manifestFresh = true;
+
+    if (isTruncated) {
+      // Scan didn't cover all objects — manifest might be incomplete
+      manifestFresh = false;
+      console.info(
+        `manifest verif scan truncated (scanned ${scanCount}, manifest has ${manifestCount}), full walk needed`
+      );
+    } else if (scanCount !== manifestCount) {
+      // Object count mismatch
+      manifestFresh = false;
+      console.info(
+        `manifest count mismatch: manifest ${manifestCount} vs remote ${scanCount}`
+      );
+    } else {
+      // Compare ETags: manifest vs scan
+      for (const [relPath, entry] of Object.entries(manifest.files)) {
+        const remoteKey = `${remotePrefix}${relPath}`;
+        const scanned = scannedEntries.get(remoteKey);
+        if (!scanned) {
+          // Key in manifest but not on remote → deleted
+          manifestFresh = false;
+          break;
+        }
+        if (scanned.etag !== "" && scanned.etag !== entry.etag) {
+          // ETag mismatch → modified
+          manifestFresh = false;
+          break;
+        }
+      }
+    }
+
+    this.manifestBasedWalk = manifestFresh;
+
+    if (manifestFresh) {
+      // Manifest is fresh → build entities from manifest
+      console.info(
+        `manifest is fresh (${manifestCount} files), using manifest data`
+      );
+      return this._manifestToEntities(manifest);
+    }
+
+    // Step 3: Manifest is stale, fall back to full walk
+    console.info("manifest is stale, falling back to full walk");
+    return this.walk();
+  }
+
+  /**
+   * Convert manifest entries to Entity[].
+   */
+  private _manifestToEntities(manifest: RemoteManifest): Entity[] {
+    const remotePrefix = this.s3Config.remotePrefix ?? "";
+    const entities: Entity[] = [];
+
+    for (const [relPath, entry] of Object.entries(manifest.files)) {
+      const key = getLocalNoPrefixPath(
+        `${remotePrefix}${relPath}`,
+        remotePrefix
+      );
+      entities.push({
+        key,
+        keyRaw: key,
+        mtimeCli: entry.mtime,
+        mtimeSvr: entry.mtime,
+        size: entry.size,
+        sizeRaw: entry.size,
+        etag: entry.etag,
+        synthesizedFolder: false,
+      });
+
+      // Add synthetic folder entries
+      for (const f of getFolderLevels(key, true)) {
+        if (!entities.some((e) => e.keyRaw === f)) {
+          entities.push({
+            key: f,
+            keyRaw: f,
+            size: 0,
+            sizeRaw: 0,
+            mtimeSvr: entry.mtime,
+            mtimeCli: entry.mtime,
+            synthesizedFolder: true,
+          });
+        }
+      }
+    }
+
+    return entities;
   }
 }

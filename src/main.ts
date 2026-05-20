@@ -10,12 +10,14 @@ import {
   Platform,
   Plugin,
   type Setting,
+  TFile,
   TFolder,
   addIcon,
   requireApiVersion,
   setIcon,
 } from "obsidian";
 import type {
+  ErrorCategory,
   RemotelySavePluginSettings,
   SyncTriggerSourceType,
 } from "./baseTypes";
@@ -33,21 +35,32 @@ import type { LangTypeAndAuto, TransItemType } from "./i18n";
 import { importQrCodeUri } from "./importExport";
 import {
   type InternalDBs,
+  addErrorRecord,
   clearAllLoggerOutputRecords,
   clearExpiredSyncPlanRecords,
+  getErrorRecords,
   getLastFailedSyncTimeByVault,
   getLastSuccessSyncTimeByVault,
+  markErrorRecovered,
+  mergeAndAddPendingOp,
   prepareDBs,
   upsertLastFailedSyncTimeByVault,
   upsertLastSuccessSyncTimeByVault,
   upsertPluginVersionByVault,
 } from "./localdb";
-import { startLogInterception, stopLogInterception } from "./logManager";
+import type { ErrorHistoryRecord } from "./localdb";
+import {
+  loadFromLocalStorage,
+  startLogInterception,
+  stopLogInterception,
+} from "./logManager";
+import { LogViewerModal } from "./logViewerModal";
 import { changeMobileStatusBar } from "./misc";
 import { DEFAULT_PROFILER_CONFIG, Profiler } from "./profiler";
 import { RemotelySaveSettingTab } from "./settings/index";
 import { SyncAlgoV3Modal } from "./syncAlgoV3Notice";
 import { syncer } from "./syncEngine";
+import { SyncTracer } from "./syncTracer";
 
 const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   s3: DEFAULT_S3_CONFIG,
@@ -81,6 +94,7 @@ const DEFAULT_SETTINGS: RemotelySavePluginSettings = {
   enableMobileStatusBar: false,
   encryptionMethod: "unknown",
   profiler: DEFAULT_PROFILER_CONFIG,
+  collapsedGroups: {},
 };
 
 interface OAuth2Info {
@@ -155,8 +169,13 @@ export default class RemotelySavePlugin extends Plugin {
   debugServerTemp?: string;
   syncEvent?: Events;
   appContainerObserver?: MutationObserver;
+  syncTracer = new SyncTracer();
+  settingsTab?: RemotelySaveSettingTab;
+  syncOnSaveDebounceTimer: number | null = null;
 
   async syncRun(triggerSource: SyncTriggerSourceType = "manual") {
+    const syncId = this.syncTracer.beginSync(triggerSource);
+
     let profiler: Profiler | undefined = undefined;
     if (this.settings.profiler?.enable ?? false) {
       profiler = new Profiler(
@@ -318,8 +337,61 @@ export default class RemotelySavePlugin extends Plugin {
       }
     };
 
+    const categorizeError = (err: Error): ErrorCategory => {
+      const msg = err.message ?? "";
+      if (
+        msg.includes("bucket") ||
+        msg.includes("endpoint") ||
+        msg.includes("configure")
+      ) {
+        return "config";
+      }
+      if (
+        msg.includes("timeout") ||
+        msg.includes("ECONNREFUSED") ||
+        msg.includes("fetch") ||
+        msg.includes("network")
+      ) {
+        return "network";
+      }
+      if (
+        msg.includes("403") ||
+        msg.includes("401") ||
+        msg.includes("token") ||
+        msg.includes("credential") ||
+        msg.includes("auth")
+      ) {
+        return "auth";
+      }
+      if (msg.includes("conflict") || msg.includes("changed during")) {
+        return "conflict";
+      }
+      return "internal";
+    };
+
     const errNotifyFunc = async (s: SyncTriggerSourceType, error: Error) => {
       console.error(error);
+
+      // Categorize and record the error
+      const category = categorizeError(error);
+      this.syncTracer.recordOp({
+        type: "api_call",
+        label: "sync_error",
+        durationMs: 0,
+        error: error.message,
+      });
+
+      try {
+        await addErrorRecord(this.db, this.vaultRandomID, {
+          timestamp: Date.now(),
+          category,
+          message: error.message ?? "unknown error",
+          syncId,
+        });
+      } catch {
+        // silently ignore db errors
+      }
+
       if (error instanceof AggregateError) {
         for (const e of error.errors) {
           getNotice(s, e.message, 10 * 1000);
@@ -327,6 +399,18 @@ export default class RemotelySavePlugin extends Plugin {
       } else {
         getNotice(s, error?.message ?? "error while sync", 10 * 1000);
       }
+    };
+
+    const phaseLabels: Record<number, string> = {
+      0: "Dry run mode...",
+      1: "Preparing...",
+      2: "Checking password...",
+      3: "Fetching remote data...",
+      4: "Fetching local data...",
+      5: "Loading previous sync...",
+      6: "Comparing & planning...",
+      7: "Applying changes...",
+      8: "Finalizing...",
     };
 
     const ribboonFunc = async (s: SyncTriggerSourceType, step: number) => {
@@ -359,14 +443,39 @@ export default class RemotelySavePlugin extends Plugin {
       if (step === 1) {
         // change status to "syncing..." on statusbar
         this.updateLastSyncMsg(s, "syncing", -1, -1);
+        // Set richer phase label
+        if (this.statusBarElement !== undefined) {
+          const prefix = getStatusBarShortMsgFromSyncSource(t, s);
+          this.statusBarElement.setText(
+            `${prefix}Phase 1/4: ${phaseLabels[step] ?? "Working..."}`
+          );
+        }
+      } else if (step >= 2 && step <= 7) {
+        // Show phase-based progress in status bar
+        if (this.statusBarElement !== undefined) {
+          const prefix = getStatusBarShortMsgFromSyncSource(t, s);
+          const phaseProgress = Math.min(Math.ceil(step / 2), 4);
+          this.statusBarElement.setText(
+            `${prefix}Phase ${phaseProgress}/4: ${phaseLabels[step] ?? "Working..."}`
+          );
+        }
+        this.syncTracer.recordPhase(phaseLabels[step] ?? `step_${step}`);
       } else if (step === 8 && everythingOk) {
         const ts = Date.now();
         await upsertLastSuccessSyncTimeByVault(this.db, this.vaultRandomID, ts);
-        this.updateLastSyncMsg(s, "not_syncing", ts, null); // hack: 'not_syncing'
+        this.updateLastSyncMsg(s, "not_syncing", ts, null);
+        this.syncTracer.endSync();
+        // Mark errors as recovered
+        try {
+          await markErrorRecovered(this.db, this.vaultRandomID, syncId);
+        } catch {
+          // ignore
+        }
       } else if (!everythingOk) {
         const ts = Date.now();
         await upsertLastFailedSyncTimeByVault(this.db, this.vaultRandomID, ts);
         this.updateLastSyncMsg(s, "not_syncing", null, ts);
+        this.syncTracer.endSync();
       }
     };
 
@@ -441,6 +550,7 @@ export default class RemotelySavePlugin extends Plugin {
   async onload() {
     console.info(`loading plugin ${this.manifest.id}`);
     startLogInterception();
+    loadFromLocalStorage();
 
     const { iconSvgSyncWait, iconSvgSyncRunning, iconSvgLogs } = getIconSvg();
 
@@ -660,7 +770,19 @@ export default class RemotelySavePlugin extends Plugin {
       },
     });
 
-    this.addSettingTab(new RemotelySaveSettingTab(this.app, this));
+    this.settingsTab = new RemotelySaveSettingTab(this.app, this);
+    this.addSettingTab(this.settingsTab);
+
+    // Add log viewer command & ribbon
+    this.addCommand({
+      id: "open-log-viewer",
+      name: "Open Log Viewer",
+      icon: iconNameLogs,
+      callback: () => {
+        const modal = new LogViewerModal(this);
+        modal.open();
+      },
+    });
 
     // this.registerDomEvent(document, "click", (evt: MouseEvent) => {
     //   console.info("click", evt);
@@ -682,6 +804,61 @@ export default class RemotelySavePlugin extends Plugin {
       this.vaultRandomID,
       this.manifest.version
     );
+
+    // ── Initialize pending ops change journal (vault event tracking) ──
+    // Wire Obsidian vault events to the IndexedDB-based change journal.
+    // Every create/modify/delete/rename is recorded as a pending operation,
+    // so the sync engine can process only changed files instead of walking everything.
+    this.app.workspace.onLayoutReady(() => {
+      const profileID = this.getCurrProfileID();
+
+      this.registerEvent(
+        this.app.vault.on("create", (file) => {
+          if (file instanceof TFile) {
+            mergeAndAddPendingOp(this.db, this.vaultRandomID, profileID, {
+              type: "create",
+              key: file.path,
+              timestamp: Date.now(),
+            });
+            this.triggerDebouncedSyncOnSave();
+          }
+        })
+      );
+
+      this.registerEvent(
+        this.app.vault.on("modify", (file) => {
+          mergeAndAddPendingOp(this.db, this.vaultRandomID, profileID, {
+            type: "modify",
+            key: file.path,
+            timestamp: Date.now(),
+          });
+          this.triggerDebouncedSyncOnSave();
+        })
+      );
+
+      this.registerEvent(
+        this.app.vault.on("delete", (file) => {
+          if (file instanceof TFile) {
+            mergeAndAddPendingOp(this.db, this.vaultRandomID, profileID, {
+              type: "delete",
+              key: file.path,
+              timestamp: Date.now(),
+            });
+          }
+        })
+      );
+
+      this.registerEvent(
+        this.app.vault.on("rename", (file, oldPath) => {
+          mergeAndAddPendingOp(this.db, this.vaultRandomID, profileID, {
+            type: "rename",
+            key: oldPath,
+            newKey: file.path,
+            timestamp: Date.now(),
+          });
+        })
+      );
+    });
   }
 
   async onunload() {
@@ -959,6 +1136,27 @@ export default class RemotelySavePlugin extends Plugin {
   async saveAgreeToUseNewSyncAlgorithm() {
     this.settings.agreeToUseSyncV3 = true;
     await this.saveSettings();
+  }
+
+  /**
+   * Debounced trigger for sync-on-save.
+   * When a file is created or modified, this method is called.
+   * It waits for `syncOnSaveAfterMilliseconds` of inactivity before triggering a sync.
+   * If the setting is <= 0, no sync is triggered (changes are still tracked in the journal).
+   */
+  private triggerDebouncedSyncOnSave() {
+    const delay = this.settings.syncOnSaveAfterMilliseconds;
+    if (delay === undefined || delay <= 0) return;
+
+    if (this.syncOnSaveDebounceTimer !== null) {
+      window.clearTimeout(this.syncOnSaveDebounceTimer);
+    }
+    this.syncOnSaveDebounceTimer = window.setTimeout(() => {
+      this.syncOnSaveDebounceTimer = null;
+      if (!this.isSyncing) {
+        this.syncRun("auto_sync_on_save");
+      }
+    }, delay);
   }
 
   setCurrSyncMsg(

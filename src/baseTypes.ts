@@ -112,6 +112,8 @@ export interface RemotelySavePluginSettings {
   logToDB?: boolean;
 
   howToCleanEmptyFolder?: EmptyFolderCleanType;
+
+  collapsedGroups?: Record<string, boolean>;
 }
 
 export const COMMAND_URI = "remote-sync";
@@ -235,3 +237,110 @@ export type SyncTriggerSourceType =
 
 export const REMOTELY_SAVE_VERSION_2022 = "0.3.25";
 export const REMOTELY_SAVE_VERSION_2024PREPARE = "0.3.32";
+
+// ── Sync Trace (PRD Better Debugging) ──
+
+export type SyncOpType =
+  | "api_call"
+  | "file_read"
+  | "file_write"
+  | "file_delete"
+  | "decision"
+  | "walk"
+  | "compare"
+  | "phase";
+
+export interface SyncOp {
+  timestamp: number;
+  type: SyncOpType;
+  label: string;
+  durationMs: number;
+  key?: string;
+  size?: number;
+  error?: string;
+  apiName?: string;
+}
+
+export interface SyncTraceResult {
+  syncId: string;
+  startTime: number;
+  endTime: number;
+  ops: SyncOp[];
+  triggerSource: SyncTriggerSourceType;
+}
+
+export type ErrorCategory =
+  | "config"
+  | "network"
+  | "auth"
+  | "conflict"
+  | "internal"
+  | "skip";
+
+export interface ErrorRecord {
+  timestamp: number;
+  category: ErrorCategory;
+  message: string;
+  syncId?: string;
+  recovered?: boolean;
+}
+
+export const ERROR_CATEGORY_LABELS: Record<ErrorCategory, string> = {
+  config: "Configuration Error",
+  network: "Network Error",
+  auth: "Authentication Error",
+  conflict: "Conflict Error",
+  internal: "Internal Error",
+  skip: "Skipped",
+};
+
+// ── Remote Manifest (PRD S3 Native Manifest Sync) ──
+
+/**
+ * Single entry in the remote sync manifest.
+ * Stored per file path, keyed by the local (relative) path.
+ */
+export interface ManifestEntry {
+  /** S3 ETag of the remote object (used for change detection) */
+  etag: string;
+  /** Client-side mtime (from the original filesystem, in ms) */
+  mtime: number;
+  /** File size in bytes */
+  size: number;
+  /** Whether the file is encrypted on the remote */
+  encrypted: boolean;
+}
+
+/**
+ * The remote sync manifest — a shared prevSync state stored on S3.
+ * Written after each successful sync, read before each sync.
+ * Allows multi-device coordination and avoids full remote walks.
+ */
+export interface RemoteManifest {
+  /** Schema version (currently 1) */
+  version: number;
+  /** The vault this manifest belongs to */
+  vaultRandomID: string;
+  /** Unix ms timestamp when this manifest was written */
+  syncedAt: number;
+  /** Sync session ID that produced this manifest */
+  syncId: string;
+  /** Per-file state map: local path → ManifestEntry */
+  files: Record<string, ManifestEntry>;
+  /** Summary for quick change detection */
+  summary: {
+    /** Total number of tracked files */
+    fileCount: number;
+    /** Newest mtime across all tracked files */
+    newestMtime: number | null;
+  };
+}
+
+export const ERROR_CATEGORY_COLORS: Record<ErrorCategory, string> = {
+  config: "var(--text-error)",
+  network: "var(--color-orange)",
+  auth: "var(--color-orange)",
+  conflict: "var(--color-yellow)",
+  internal: "var(--text-error)",
+  skip: "var(--text-muted)",
+};

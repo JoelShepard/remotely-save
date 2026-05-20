@@ -1,3 +1,41 @@
-- [ ] Better debugging
-- [ ] Realtime Sync - rework the sync engine to work in real time with multiple devices
-- [ ] Rework of settings dashboard
+# TODOs → PRDs
+
+Each TODO has been transformed into a detailed Product Definition Requirement (PRD) in `docs/`.
+
+- [x] **Better debugging** → [`docs/PDR-better-debugging.md`](./docs/PDR-better-debugging.md) ✅ *Completed 2026-05-20*
+  - In-app log viewer modal (`src/logViewerModal.ts`)
+  - Structured sync trace (`src/syncTracer.ts`)
+  - Error categorization & history in IndexedDB
+  - Phase-based live sync progress in status bar
+  - Persistent log storage (localStorage, cross-session)
+  - Troubleshooting section always visible, dev options togglable inside
+- [x] **Rework of settings dashboard** → [`docs/PDR-settings-dashboard.md`](./docs/PDR-settings-dashboard.md) ✅ *Completed 2026-05-20*
+  - Dynamic service-specific sections (only show active service)
+  - Inline validation for S3 and WebDAV config fields
+  - Collapsible setting groups with persisted state
+  - Connection test enhanced with detailed result modal + suggestions
+  - Password confirmation field to prevent lockout from typos
+  - Mobile-responsive CSS fixes (cards stack, inputs full-width)
+- [x] **Optimize sync engine to work well with S3** → [`docs/PDR-s3-sync-optimization.md`](./docs/PDR-s3-sync-optimization.md) ✅ *Phase 1-2 completed 2026-05-20*
+  - [x] ETag-based comparison in `entityEquals()` — avoids unnecessary transfers when ETags match
+  - [x] Profile-agnostic prevSync fallback — unblocks backend switching (WebDAV ↔ S3)
+  - [x] `rmBatch()` in S3 adapter + FakeFs base — batch delete up to 1000 keys per API call
+  - [x] First-sync auto-detection heuristic — bypasses protectModifyPercentage on first sync to empty remote
+  - [ ] Server-side copy (CopyObject) — pending, limited impact in current architecture
+  - [ ] Manifest-based mtime cache — pending, larger feature for useAccurateMTime optimization
+- [x] **Rework completely the sync behavior** → [`docs/PDR-sync-behavior-rework.md`](./docs/PDR-sync-behavior-rework.md) ✅ *Phase 1-3 completed 2026-05-20*
+  - [x] Vault events → pending ops journal (create/modify/delete/rename wired)
+  - [x] Pending op deduplication (full merge matrix implemented)
+  - [x] Debounced sync-on-save via journal events
+  - [x] Remote change detection (RemoteSnapshot + checkRemoteChanges on all adapters)
+  - [x] Incremental sync path (processPendingOps + incrementalSkipLocal flag)
+  - [x] Fallback to full sync when journal exceeds threshold
+  - [x] Checkpoint system (interrupted sync recovery)
+  - [ ] Unified SyncState table — complex schema migration, deferred
+  - [ ] Conflict base version for three-way merge — deferred
+  - [ ] Sync history viewer in settings — deferred
+- [x] **Native S3-based multi-device sync (remote manifest)** → [`docs/PDR-s3-native-manifest-sync.md`](./docs/PDR-s3-native-manifest-sync.md) ✅ *Completed 2026-05-20*
+  - [x] Remote sync manifest stored on S3 (shared prevSync across devices)
+  - [x] Manifest-based walk elimination (skip full ListObjectsV2 when manifest is fresh)
+  - [x] Multi-device coordination via remote manifest
+  - [x] Fallback to full walk when manifest is missing or stale

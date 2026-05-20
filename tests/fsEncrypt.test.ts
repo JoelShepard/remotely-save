@@ -1,6 +1,6 @@
 import { strict as assert } from "assert";
 import type { Entity } from "../src/baseTypes";
-import { FakeFs } from "../src/fsAll";
+import { FakeFs, type RemoteSnapshot } from "../src/fsAll";
 import { FakeFsEncrypt } from "../src/fsEncrypt";
 
 if (typeof globalThis.self === "undefined") {
@@ -99,6 +99,10 @@ class InMemoryFs extends FakeFs {
 
   allowEmptyFile(): boolean {
     return true;
+  }
+
+  async checkRemoteChanges(): Promise<RemoteSnapshot | null> {
+    return null;
   }
 }
 

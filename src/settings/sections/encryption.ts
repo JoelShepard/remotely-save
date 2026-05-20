@@ -15,6 +15,9 @@ export function buildEncryptionSection(
   let encryptionMethodSetting: Setting;
 
   let newPassword = `${plugin.settings.password}`;
+  let confirmPassword = "";
+  let confirmSetting: Setting | undefined;
+
   group.addSetting((setting) => {
     passwordSetting = setting;
     setting
@@ -27,11 +30,33 @@ export function buildEncryptionSection(
           .setValue(`${plugin.settings.password}`)
           .onChange(async (value) => {
             newPassword = value.trim();
+            // Update confirm validation
+            if (confirmSetting && confirmPassword !== "") {
+              const confirmInput =
+                confirmSetting.settingEl.querySelector("input");
+              if (confirmInput) {
+                if (newPassword !== confirmPassword) {
+                  confirmInput.setCustomValidity("Passwords do not match");
+                  confirmInput.classList.add("rs-invalid");
+                } else {
+                  confirmInput.setCustomValidity("");
+                  confirmInput.classList.remove("rs-invalid");
+                  confirmInput.classList.add("rs-valid");
+                }
+              }
+            }
           });
       })
       .addButton(async (button) => {
         button.setButtonText(t("confirm"));
         button.onClick(async () => {
+          // Check password confirmation
+          if (newPassword !== "" && confirmPassword !== "") {
+            if (newPassword !== confirmPassword) {
+              new Notice("Passwords do not match!");
+              return;
+            }
+          }
           new PasswordModal(
             plugin.app,
             plugin,
@@ -39,6 +64,38 @@ export function buildEncryptionSection(
             encryptionMethodSetting
           ).open();
         });
+      });
+  });
+
+  // Password confirmation field
+  group.addSetting((setting) => {
+    confirmSetting = setting;
+    setting
+      .setName("Confirm password")
+      .setDesc(
+        "Re-enter the encryption password to avoid typos. Only needed when changing the password."
+      )
+      .addText((text) => {
+        wrapTextWithPasswordHide(text);
+        text
+          .setPlaceholder("Re-enter password")
+          .setValue("")
+          .onChange(async (value) => {
+            confirmPassword = value.trim();
+            const input = text.inputEl;
+            if (confirmPassword !== "" && confirmPassword !== newPassword) {
+              input.setCustomValidity("Passwords do not match");
+              input.classList.add("rs-invalid");
+              input.classList.remove("rs-valid");
+            } else if (confirmPassword !== "") {
+              input.setCustomValidity("");
+              input.classList.remove("rs-invalid");
+              input.classList.add("rs-valid");
+            } else {
+              input.setCustomValidity("");
+              input.classList.remove("rs-invalid", "rs-valid");
+            }
+          });
       });
   });
 

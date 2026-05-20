@@ -1,10 +1,21 @@
 import { DEFAULT_DEBUG_FOLDER, type Entity } from "./baseTypes";
-import { FakeFs } from "./fsAll";
+import { FakeFs, type LocalChangeStat, type RemoteSnapshot } from "./fsAll";
 
 import { TFile, TFolder, type Vault } from "obsidian";
 import { mkdirpInVault, statFix, unixTimeToStr } from "./misc";
 import { listFilesInObsFolder } from "./obsFolderLister";
 import type { Profiler } from "./profiler";
+
+function hashStrings(values: string[]): string {
+  let hash = 2166136261;
+  for (const value of values) {
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return `${hash >>> 0}`;
+}
 
 export class FakeFsLocal extends FakeFs {
   vault: Vault;
@@ -206,5 +217,58 @@ export class FakeFsLocal extends FakeFs {
 
   allowEmptyFile(): boolean {
     return true;
+  }
+
+  async checkRemoteChanges(): Promise<RemoteSnapshot | null> {
+    return null;
+  }
+
+  async statLocalChanges(): Promise<LocalChangeStat | null> {
+    const keysForHash: string[] = [];
+    let newestMtime = 0;
+    let fileCount = 0;
+
+    for (const entry of this.vault.getAllLoadedFiles()) {
+      let key = entry.path;
+      if (key.startsWith("/")) {
+        key = key.slice(1);
+      }
+      if (key === "" || key === "/") {
+        continue;
+      }
+
+      if (entry instanceof TFile) {
+        const mtime =
+          entry.stat.mtime > 0 ? entry.stat.mtime : entry.stat.ctime;
+        newestMtime = Math.max(newestMtime, mtime);
+        fileCount += 1;
+        keysForHash.push(`${key}\t${mtime}\t${entry.stat.size}`);
+      } else if (entry instanceof TFolder) {
+        keysForHash.push(`${key}/`);
+      }
+    }
+
+    if (this.syncConfigDir || this.syncBookmarks) {
+      const bookmarksOnly = !this.syncConfigDir;
+      const syncFiles = await listFilesInObsFolder(
+        this.configDir,
+        this.vault,
+        this.pluginID,
+        bookmarksOnly
+      );
+      for (const f of syncFiles) {
+        const mtime = f.mtimeCli ?? f.mtimeSvr ?? 0;
+        newestMtime = Math.max(newestMtime, mtime);
+        fileCount += f.keyRaw.endsWith("/") ? 0 : 1;
+        keysForHash.push(`${f.keyRaw}\t${mtime}\t${f.size ?? f.sizeRaw ?? 0}`);
+      }
+    }
+
+    keysForHash.sort();
+    return {
+      fileCount,
+      newestMtime: newestMtime > 0 ? newestMtime : null,
+      pathHash: hashStrings(keysForHash),
+    };
   }
 }

@@ -120,3 +120,196 @@
 .setting-group-header {
   margin-top: 1.5em;
 }
+
+/* ── Log Viewer Modal ── */
+.rs-log-viewer-modal {
+  --log-viewer-height: 60vh;
+}
+
+.rs-log-viewer-modal .modal-content {
+  padding: 0;
+}
+
+.rs-log-viewer-toolbar {
+  display: flex;
+  gap: 0.5em;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 0.75em 1em;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.rs-log-viewer-toolbar select {
+  min-width: 100px;
+}
+
+.rs-log-viewer-toolbar button {
+  padding: 0.25em 0.75em;
+  font-size: 0.85em;
+}
+
+.rs-log-live-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.rs-log-viewer-status {
+  padding: 0.25em 1em;
+  font-size: 0.8em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.rs-log-viewer-textarea {
+  width: 100%;
+  height: var(--log-viewer-height);
+  font-family: var(--font-monospace);
+  font-size: 0.75em;
+  background: var(--background-primary);
+  border: none;
+  border-radius: 0;
+  padding: 0.5em 1em;
+  resize: vertical;
+  color: var(--text-normal);
+  line-height: 1.4;
+  tab-size: 2;
+}
+
+.rs-log-viewer-textarea:focus {
+  box-shadow: none;
+}
+
+.rs-log-viewer-bottom {
+  display: flex;
+  gap: 1em;
+  padding: 0.5em 1em;
+  background: var(--background-secondary);
+  border-top: 1px solid var(--background-modifier-border);
+  font-size: 0.8em;
+}
+
+.rs-log-viewer-bottom label {
+  display: flex;
+  align-items: center;
+  gap: 0.25em;
+  cursor: pointer;
+}
+
+/* ── Inline Validation ── */
+.rs-valid {
+  border-color: var(--color-green) !important;
+  box-shadow: 0 0 0 1px var(--color-green);
+}
+
+.rs-invalid {
+  border-color: var(--color-red) !important;
+  box-shadow: 0 0 0 1px var(--color-red);
+}
+
+/* ── Collapsible Setting Groups ── */
+.rs-group-wrapper {
+  /* Neutral wrapper — no extra visual styling */
+}
+
+.rs-group-chevron {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 0.25em;
+  transition: transform 0.15s ease;
+  width: 16px;
+  height: 16px;
+}
+
+.setting-group-header:hover .rs-group-chevron {
+  opacity: 0.8;
+}
+
+/* Hide all settings within a collapsed group, except the header */
+.rs-group-collapsed > .setting-item:not(.setting-group-header) {
+  display: none !important;
+}
+
+/* ── Connection Test Result Modal ── */
+.rs-connection-error {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  padding: 0.75em;
+  margin: 0.5em 0;
+  font-size: 0.85em;
+  max-height: 200px;
+  overflow-y: auto;
+  color: var(--text-error);
+}
+
+.rs-connection-latency-ok {
+  color: var(--color-green);
+  font-weight: bold;
+}
+
+.rs-connection-latency-fail {
+  color: var(--text-muted);
+}
+
+.rs-connection-success-hint {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Mobile-responsive layout ── */
+@media (max-width: 600px) {
+  .rs-service-selector {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rs-service-card {
+    max-width: none;
+    flex-direction: row;
+    justify-content: center;
+    padding: 0.75em;
+  }
+
+  .rs-service-card svg {
+    width: 32px;
+    height: 32px;
+  }
+
+  .qrcode-img {
+    width: 100%;
+    height: auto;
+    max-width: 350px;
+  }
+
+  .setting-item {
+    flex-wrap: wrap;
+  }
+
+  .setting-item-control {
+    flex: 1 0 100%;
+    margin-top: 0.5em;
+  }
+
+  .rs-log-viewer-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rs-log-viewer-toolbar select,
+  .rs-log-viewer-toolbar button {
+    width: 100%;
+  }
+
+  .rs-log-viewer-textarea {
+    font-size: 0.65em;
+  }
+
+  textarea.webdav-customheaders-textarea,
+  textarea.ignorepaths-textarea,
+  textarea.onlyallowpaths-textarea {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}

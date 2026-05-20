@@ -1,6 +1,6 @@
 {
   "name": "remote-sync",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "description": "This is yet another sync plugin for Obsidian app.",
   "scripts": {
     "dev2": "node esbuild.config.mjs --watch",
@@ -40,6 +40,7 @@
     "dotenv": "^16.4.5",
     "esbuild": "^0.23.0",
     "esbuild-plugin-inline-worker": "^0.1.1",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^24.1.1",
     "mocha": "^11.7.5",
     "npm-check-updates": "^16.14.20",

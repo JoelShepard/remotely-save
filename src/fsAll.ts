@@ -1,8 +1,47 @@
 import isEqual from "lodash/isEqual";
 import { nanoid } from "nanoid";
-import type { Entity } from "./baseTypes";
+import type { Entity, RemoteManifest } from "./baseTypes";
+
+/**
+ * Compact snapshot of the remote state for lightweight change detection.
+ * Stored after each full sync and compared during incremental sync checks.
+ */
+export interface RemoteSnapshot {
+  /** Total number of objects (files + folder objects) on the remote */
+  objectCount: number;
+  /** The maximum mtime (client or server) seen across all objects */
+  newestMtime: number | null;
+  /** Up to 10 keys with the highest mtimes (to detect modifications) */
+  sampleKeys: string[];
+  /** Unix timestamp when this snapshot was taken */
+  capturedAt: number;
+}
+
+export interface RemoteManifestStat {
+  etag: string;
+  lastModified: number | null;
+  size: number | null;
+}
+
+export interface LocalChangeStat {
+  fileCount: number;
+  newestMtime: number | null;
+  pathHash: string;
+}
 
 export abstract class FakeFs {
+  /** Whether the last walkFromManifest() call used manifest data (vs fallback to full walk). */
+  private _manifestBasedWalk = false;
+
+  /** @internal */
+  get manifestBasedWalk(): boolean {
+    return this._manifestBasedWalk;
+  }
+
+  /** @internal */
+  set manifestBasedWalk(v: boolean) {
+    this._manifestBasedWalk = v;
+  }
   abstract kind: string;
   abstract walk(): Promise<Entity[]>;
   abstract walkPartial(): Promise<Entity[]>;
@@ -17,6 +56,18 @@ export abstract class FakeFs {
   abstract readFile(key: string): Promise<ArrayBuffer>;
   abstract rename(key1: string, key2: string): Promise<void>;
   abstract rm(key: string): Promise<void>;
+
+  /**
+   * Batch delete multiple keys at once.
+   * Default implementation falls back to sequential individual rm() calls.
+   * Storage-specific adapters should override for efficiency (e.g., S3 DeleteObjects).
+   */
+  async rmBatch(keys: string[]): Promise<void> {
+    for (const key of keys) {
+      await this.rm(key);
+    }
+  }
+
   abstract checkConnect(callbackFunc?: any): Promise<boolean>;
   async checkConnectCommonOps(callbackFunc?: any) {
     try {
@@ -64,4 +115,57 @@ export abstract class FakeFs {
   abstract getUserDisplayName(): Promise<string>;
   abstract revokeAuth(): Promise<any>;
   abstract allowEmptyFile(): boolean;
+
+  /**
+   * Lightweight remote change detection.
+   * Makes a minimal number of API calls (~1-3) to build a fresh snapshot
+   * or compare against a previous snapshot.
+   *
+   * @returns A fresh RemoteSnapshot, or null if the check is unavailable.
+   */
+  abstract checkRemoteChanges(): Promise<RemoteSnapshot | null>;
+
+  /**
+   * Read the remote sync manifest (if available).
+   * Default: returns null (not supported).
+   * Override in storage adapters that support manifest-based sync (e.g., S3).
+   */
+  async readManifest(vaultRandomID: string): Promise<RemoteManifest | null> {
+    return null;
+  }
+
+  /**
+   * Write the remote sync manifest.
+   * Default: no-op.
+   * Override in storage adapters that support manifest-based sync.
+   */
+  async writeManifest(
+    vaultRandomID: string,
+    manifest: RemoteManifest
+  ): Promise<void> {
+    // no-op by default
+  }
+
+  async statManifest(
+    vaultRandomID: string
+  ): Promise<RemoteManifestStat | null> {
+    return null;
+  }
+
+  async statLocalChanges(): Promise<LocalChangeStat | null> {
+    return null;
+  }
+
+  /**
+   * Walk the remote using a cached manifest with bounded verification.
+   * Default: falls back to full walk().
+   * Override in storage adapters that support manifest-based sync.
+   *
+   * @param manifest The previously read remote manifest
+   * @returns Entities representing the current remote state
+   */
+  async walkFromManifest(manifest: RemoteManifest): Promise<Entity[]> {
+    this._manifestBasedWalk = false;
+    return this.walk();
+  }
 }

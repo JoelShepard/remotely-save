@@ -1,5 +1,5 @@
 import type { Entity } from "./baseTypes";
-import { FakeFs } from "./fsAll";
+import { FakeFs, type RemoteSnapshot } from "./fsAll";
 
 export class FakeFsMock extends FakeFs {
   kind: "mock";
@@ -46,6 +46,10 @@ export class FakeFsMock extends FakeFs {
     throw new Error("Method not implemented.");
   }
 
+  async rmBatch(keys: string[]): Promise<void> {
+    // Default: no-op for mock
+  }
+
   async checkConnect(callbackFunc?: any): Promise<boolean> {
     return await this.checkConnectCommonOps(callbackFunc);
   }
@@ -60,5 +64,9 @@ export class FakeFsMock extends FakeFs {
 
   allowEmptyFile(): boolean {
     throw new Error("Method not implemented.");
+  }
+
+  async checkRemoteChanges(): Promise<RemoteSnapshot | null> {
+    return null;
   }
 }

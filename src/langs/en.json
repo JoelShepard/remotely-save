@@ -324,7 +324,7 @@
   "settings_import_desc": "Paste the exported URI into here and click \"Import\". Or, you can open a camera or scan-qrcode app to scan the QR code.",
   "settings_import_button": "Import",
   "settings_import_error_notice": "Your URI string is empty or not correct!",
-  "settings_debug": "Debug",
+  "settings_debug": "Troubleshooting",
   "settings_debuglevel": "Alter notice level",
   "settings_debuglevel_desc": "By default the notice level is \"info\". You can change to \"debug\" to get verbose information while syncing.",
   "settings_outputsettingsconsole": "Output current settings from disk to console",

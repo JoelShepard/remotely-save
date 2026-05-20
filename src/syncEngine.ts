@@ -1,27 +1,39 @@
 // biome-ignore lint/suspicious/noShadowRestrictedNames: <explanation>
 import AggregateError from "aggregate-error";
+import { nanoid } from "nanoid";
 import PQueue from "p-queue";
 import type {
   ConflictActionType,
   DecisionTypeForMixedEntity,
   Entity,
+  ManifestEntry,
   MixedEntity,
+  RemoteManifest,
   RemotelySavePluginSettings,
   SUPPORTED_SERVICES_TYPE,
   SyncDirectionType,
   SyncTriggerSourceType,
 } from "./baseTypes";
 import { copyFile, copyFileOrFolder, copyFolder } from "./copyLogic";
-import type { FakeFs } from "./fsAll";
+import type {
+  FakeFs,
+  LocalChangeStat,
+  RemoteManifestStat,
+  RemoteSnapshot,
+} from "./fsAll";
 import type { FakeFsEncrypt } from "./fsEncrypt";
 import {
   type InternalDBs,
   type PendingOp,
   clearPendingOps,
   clearPrevSyncRecordByVaultAndProfile,
+  clearSyncCheckpoint,
   getAllPrevSyncRecordsByVaultAndProfile,
   getPendingOps,
+  getPrevSyncRecordsByVaultAnyProfile,
+  getSyncCheckpoint,
   insertSyncPlanRecordByVault,
+  saveSyncCheckpoint,
   upsertPrevSyncRecordByVaultAndProfile,
 } from "./localdb";
 import {
@@ -56,11 +68,21 @@ function isFolderKey(key: string): boolean {
   return key.endsWith("/");
 }
 
-function entityEquals(a: Entity | undefined, b: Entity | undefined): boolean {
+export function entityEquals(
+  a: Entity | undefined,
+  b: Entity | undefined
+): boolean {
   if (a === undefined && b === undefined) return true;
   if (a === undefined || b === undefined) return false;
-  const mtimeA = a.mtimeCli ?? a.mtimeSvr ?? 0;
-  const mtimeB = b.mtimeCli ?? b.mtimeSvr ?? 0;
+  // If both have matching ETags, consider equal regardless of mtime/size
+  if (a.etag && b.etag && a.etag === b.etag) return true;
+  // Round mtimes to seconds for comparison because:
+  // - S3 LastModified operates at second precision
+  // - File system mtimes may have millisecond precision
+  // - Without rounding, a file uploaded from S3 (second-precise mtime)
+  //   would never match its local source (millisecond-precise mtime)
+  const mtimeA = Math.floor((a.mtimeCli ?? a.mtimeSvr ?? 0) / 1000) * 1000;
+  const mtimeB = Math.floor((b.mtimeCli ?? b.mtimeSvr ?? 0) / 1000) * 1000;
   const sizeA = a.size ?? a.sizeRaw ?? 0;
   const sizeB = b.size ?? b.sizeRaw ?? 0;
   return mtimeA === mtimeB && sizeA === sizeB;
@@ -494,15 +516,45 @@ async function doActualSync(
   const changeCount = changeKeys.length;
 
   if (totalFiles > 0 && changeCount > 0) {
-    const percent = (100 * changeCount) / totalFiles;
-    if (percent > protectModifyPercentage) {
-      throw new Error(
-        getProtectModifyPercentageErrorStrFunc(
-          protectModifyPercentage,
-          changeCount,
-          totalFiles
-        )
+    // Detect first-time sync to empty remote:
+    // If the remote has no objects (no remote-side decisions) and all changes
+    // are local creations, this is a legitimate first sync, not data loss.
+    const hasRemoteContent = changeKeys.some((k) => {
+      const d = mixedMappings[k].decision;
+      return (
+        d === "remote_is_created_then_pull" ||
+        d === "remote_is_modified_then_pull" ||
+        d === "remote_is_deleted_thus_also_delete_local" ||
+        d === "conflict_created_then_keep_remote" ||
+        d === "conflict_modified_then_keep_remote"
       );
+    });
+    const allLocalCreations = changeKeys.every((k) => {
+      const d = mixedMappings[k].decision;
+      return (
+        d === "local_is_created_then_push" ||
+        d === "local_is_modified_then_push"
+      );
+    });
+    const isFirstSync =
+      !hasRemoteContent && allLocalCreations && totalFiles > 50;
+
+    if (isFirstSync) {
+      console.info(
+        `detected first-time sync to empty/sparse remote: ${changeCount} local changes, ` +
+          `${totalFiles} total files, bypassing protectModifyPercentage check`
+      );
+    } else {
+      const percent = (100 * changeCount) / totalFiles;
+      if (percent > protectModifyPercentage) {
+        throw new Error(
+          getProtectModifyPercentageErrorStrFunc(
+            protectModifyPercentage,
+            changeCount,
+            totalFiles
+          )
+        );
+      }
     }
   }
 
@@ -637,26 +689,46 @@ async function doActualSync(
     }
   }
 
-  const remoteDeleteQueue = new PQueue({ concurrency });
-  const deleteRemoteErrors: Error[] = [];
-  for (const key of deletionKeysRemote) {
-    remoteDeleteQueue.add(async () => {
-      try {
-        await fsEncrypt.rm(key);
+  // Use batch delete for remote keys when there are multiple deletions
+  if (deletionKeysRemote.length > 0) {
+    try {
+      await fsEncrypt.rmBatch(deletionKeysRemote);
+      // Clear prevSync records for all deleted keys
+      for (const key of deletionKeysRemote) {
         await clearPrevSyncRecordByVaultAndProfile(
           db,
           vaultRandomID,
           profileID,
           key
         );
-      } catch (e: any) {
-        deleteRemoteErrors.push(e);
       }
-    });
-  }
-  await remoteDeleteQueue.onIdle();
-  if (deleteRemoteErrors.length > 0) {
-    throw new AggregateError(deleteRemoteErrors);
+    } catch (e: any) {
+      // Fall back to individual deletes if batch fails
+      console.warn(
+        `rmBatch failed, falling back to individual remote deletes: ${e.message}`
+      );
+      const remoteDeleteQueue = new PQueue({ concurrency });
+      const deleteRemoteErrors: Error[] = [];
+      for (const key of deletionKeysRemote) {
+        remoteDeleteQueue.add(async () => {
+          try {
+            await fsEncrypt.rm(key);
+            await clearPrevSyncRecordByVaultAndProfile(
+              db,
+              vaultRandomID,
+              profileID,
+              key
+            );
+          } catch (e: any) {
+            deleteRemoteErrors.push(e);
+          }
+        });
+      }
+      await remoteDeleteQueue.onIdle();
+      if (deleteRemoteErrors.length > 0) {
+        throw new AggregateError(deleteRemoteErrors);
+      }
+    }
   }
 
   const localDeleteQueue = new PQueue({ concurrency });
@@ -827,11 +899,145 @@ async function processPendingOps(
           profileID,
           op.key
         );
+      } else if (op.type === "delete") {
+        // Local file was deleted, propagate deletion to remote
+        try {
+          await fsEncrypt.rmSingle(op.key);
+        } catch (e) {
+          console.debug(`delete remote for ${op.key}: ${e}`);
+        }
+        await clearPrevSyncRecordByVaultAndProfile(
+          db,
+          vaultRandomID,
+          profileID,
+          op.key
+        );
       }
     } catch (e) {
       console.warn(`failed to process pending op for ${op.key}: ${e}`);
     }
   }
+}
+
+// ── Incremental sync constants ──
+
+/** Maximum journal entries before forcing a full sync. */
+const MAX_JOURNAL_ENTRIES = 5000;
+
+/** Key prefix in simpleKVForMiscTbl for remote snapshot storage. */
+const REMOTE_SNAPSHOT_KEY = "remote-snapshot";
+const REMOTE_MANIFEST_STAT_KEY = "remote-manifest-stat";
+const LOCAL_CHANGE_STAT_KEY = "local-change-stat";
+
+/**
+ * Store the latest remote snapshot after a successful full walk.
+ */
+async function storeRemoteSnapshot(
+  db: InternalDBs,
+  vaultRandomID: string,
+  snapshot: RemoteSnapshot
+) {
+  await db.simpleKVForMiscTbl.setItem(
+    `${vaultRandomID}\t${REMOTE_SNAPSHOT_KEY}`,
+    snapshot
+  );
+}
+
+/**
+ * Load the previous remote snapshot.
+ */
+async function loadRemoteSnapshot(
+  db: InternalDBs,
+  vaultRandomID: string
+): Promise<RemoteSnapshot | null> {
+  return (await db.simpleKVForMiscTbl.getItem(
+    `${vaultRandomID}\t${REMOTE_SNAPSHOT_KEY}`
+  )) as RemoteSnapshot | null;
+}
+
+async function storeRemoteManifestStat(
+  db: InternalDBs,
+  vaultRandomID: string,
+  stat: RemoteManifestStat
+) {
+  await db.simpleKVForMiscTbl.setItem(
+    `${vaultRandomID}\t${REMOTE_MANIFEST_STAT_KEY}`,
+    stat
+  );
+}
+
+async function loadRemoteManifestStat(
+  db: InternalDBs,
+  vaultRandomID: string
+): Promise<RemoteManifestStat | null> {
+  return (await db.simpleKVForMiscTbl.getItem(
+    `${vaultRandomID}\t${REMOTE_MANIFEST_STAT_KEY}`
+  )) as RemoteManifestStat | null;
+}
+
+async function storeLocalChangeStat(
+  db: InternalDBs,
+  vaultRandomID: string,
+  stat: LocalChangeStat
+) {
+  await db.simpleKVForMiscTbl.setItem(
+    `${vaultRandomID}\t${LOCAL_CHANGE_STAT_KEY}`,
+    stat
+  );
+}
+
+async function loadLocalChangeStat(
+  db: InternalDBs,
+  vaultRandomID: string
+): Promise<LocalChangeStat | null> {
+  return (await db.simpleKVForMiscTbl.getItem(
+    `${vaultRandomID}\t${LOCAL_CHANGE_STAT_KEY}`
+  )) as LocalChangeStat | null;
+}
+
+export function remoteManifestStatEquals(
+  prev: RemoteManifestStat | null,
+  curr: RemoteManifestStat | null
+): boolean {
+  if (prev === null || curr === null) {
+    return false;
+  }
+  return (
+    prev.etag === curr.etag &&
+    prev.lastModified === curr.lastModified &&
+    prev.size === curr.size
+  );
+}
+
+export function localChangeStatEquals(
+  prev: LocalChangeStat | null,
+  curr: LocalChangeStat | null
+): boolean {
+  if (prev === null || curr === null) {
+    return false;
+  }
+  return (
+    prev.fileCount === curr.fileCount &&
+    prev.newestMtime === curr.newestMtime &&
+    prev.pathHash === curr.pathHash
+  );
+}
+
+/**
+ * Compare two RemoteSnapshot objects to detect if the remote has changed.
+ * Returns true if the remote likely changed and a full sync is needed.
+ */
+function remoteSnapshotChanged(
+  prev: RemoteSnapshot,
+  curr: RemoteSnapshot
+): boolean {
+  if (prev.objectCount !== curr.objectCount) return true;
+  if (prev.newestMtime !== curr.newestMtime) return true;
+  if (prev.sampleKeys.length !== curr.sampleKeys.length) return true;
+  for (let i = 0; i < prev.sampleKeys.length; i++) {
+    if (prev.sampleKeys[i] !== curr.sampleKeys[i]) return true;
+  }
+  return false;
 }
 
 export async function syncer(
@@ -887,49 +1093,218 @@ export async function syncer(
     }
     profiler?.insert(`finish step${step} (check password)`);
 
+    // Check for interrupted sync checkpoint
+    if (triggerSource !== "dry") {
+      const existingCp = await getSyncCheckpoint(db, vaultRandomID);
+      if (existingCp !== null && existingCp.status === "in_progress") {
+        const ageHours = (Date.now() - existingCp.startedAt) / 3600000;
+        if (ageHours < 24) {
+          console.info(
+            `found previous sync checkpoint from ${new Date(existingCp.startedAt).toISOString()}, ` +
+              `completed ${existingCp.completedOps}/${existingCp.totalOps} ops`
+          );
+        } else {
+          console.info(
+            `found stale sync checkpoint older than 24h, clearing it`
+          );
+          await clearSyncCheckpoint(db, vaultRandomID);
+        }
+      }
+    }
+
     const pendingOps =
       triggerSource !== "dry"
         ? await getPendingOps(db, vaultRandomID, profileID)
         : [];
 
+    let incrementalSkipLocal = false;
+    let localUnchangedFastPath = false;
+
     if (pendingOps.length > 0) {
-      console.info(`processing ${pendingOps.length} pending operations`);
-      await processPendingOps(
-        pendingOps,
-        fsLocal,
-        fsEncrypt,
+      if (pendingOps.length <= MAX_JOURNAL_ENTRIES) {
+        console.info(
+          `incremental sync: processing ${pendingOps.length} pending operations`
+        );
+        await processPendingOps(
+          pendingOps,
+          fsLocal,
+          fsEncrypt,
+          db,
+          vaultRandomID,
+          profileID
+        );
+        await clearPendingOps(db, vaultRandomID, profileID);
+        profiler?.insert("finish processing pending ops");
+
+        // Incremental path: always walk remote (catches changes from other devices),
+        // but skip local walk — use prevSync as proxy for local state.
+        // We already pushed all tracked local changes, so local ≡ prevSync.
+        incrementalSkipLocal = true;
+        console.info(
+          "incremental sync: will walk remote, skip local walk (using prevSync as local)"
+        );
+      } else {
+        console.warn(
+          `too many pending ops (${pendingOps.length} > ${MAX_JOURNAL_ENTRIES}), falling back to full sync`
+        );
+        await clearPendingOps(db, vaultRandomID, profileID);
+      }
+    }
+
+    let remoteManifest: RemoteManifest | null = null;
+    let currentManifestStat: RemoteManifestStat | null = null;
+    let currentLocalChangeStat: LocalChangeStat | null = null;
+    let manifestBasedSync = false;
+    let usedManifestAsRemoteState = false;
+
+    if (fsEncrypt.innerFs.kind === "s3" && pendingOps.length === 0) {
+      const previousManifestStat = await loadRemoteManifestStat(
         db,
-        vaultRandomID,
-        profileID
+        vaultRandomID
       );
-      await clearPendingOps(db, vaultRandomID, profileID);
-      profiler?.insert("finish processing pending ops");
+      const previousLocalChangeStat = await loadLocalChangeStat(
+        db,
+        vaultRandomID
+      );
+      currentManifestStat = await fsEncrypt.statManifest(vaultRandomID);
+      currentLocalChangeStat = await fsLocal.statLocalChanges();
+      if (remoteManifestStatEquals(previousManifestStat, currentManifestStat)) {
+        try {
+          remoteManifest = await fsEncrypt.readManifest(vaultRandomID);
+          if (remoteManifest) {
+            usedManifestAsRemoteState = true;
+            localUnchangedFastPath = localChangeStatEquals(
+              previousLocalChangeStat,
+              currentLocalChangeStat
+            );
+            if (localUnchangedFastPath) {
+              incrementalSkipLocal = true;
+              console.info(
+                `local and remote unchanged since last sync, skipping local+remote walk (${Object.keys(remoteManifest.files).length} files from manifest)`
+              );
+            } else {
+              console.info(
+                `remote manifest unchanged since last sync, using manifest state directly (${Object.keys(remoteManifest.files).length} files)`
+              );
+            }
+          }
+        } catch (e) {
+          console.debug("readManifest fast path failed, falling back", e);
+        }
+      }
+    }
+
+    if (!usedManifestAsRemoteState) {
+      try {
+        if (remoteManifest === null) {
+          remoteManifest = await fsEncrypt.readManifest(vaultRandomID);
+        }
+        if (remoteManifest) {
+          const mCount = Object.keys(remoteManifest.files).length;
+          console.info(
+            `remote manifest found: ${mCount} files, synced at ${new Date(remoteManifest.syncedAt).toISOString()}`
+          );
+        } else {
+          console.info(
+            "no remote manifest found, using full walk + IndexedDB prevSync"
+          );
+        }
+      } catch (e) {
+        console.debug("readManifest failed, using full walk", e);
+      }
     }
 
     step = 3;
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
-    const remoteEntityList = await fsEncrypt.walk();
-    profiler?.insert(`finish step${step} (list remote)`);
+    let remoteEntityList: Entity[];
+    if (usedManifestAsRemoteState && remoteManifest !== null) {
+      remoteEntityList = manifestToEntities(remoteManifest);
+      manifestBasedSync = true;
+      profiler?.insert(`finish step${step} (reuse remote manifest state)`);
+    } else {
+      remoteEntityList = remoteManifest
+        ? await fsEncrypt.walkFromManifest(remoteManifest)
+        : await fsEncrypt.walk();
+      manifestBasedSync =
+        remoteManifest !== null && fsEncrypt.manifestBasedWalk;
+      profiler?.insert(`finish step${step} (list remote)`);
+    }
 
     step = 4;
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
-    const localEntityList = await fsLocal.walk();
-    profiler?.insert(`finish step${step} (list local)`);
+    let localEntityList: Entity[] = [];
+    if (incrementalSkipLocal) {
+      if (localUnchangedFastPath) {
+        console.info(
+          "local snapshot unchanged: skipping local walk (will use prevSync as proxy)"
+        );
+        profiler?.insert("skip step4 (local walk): local unchanged fast path");
+      } else {
+        console.info(
+          "incremental sync: skipping local walk (will use prevSync as proxy)"
+        );
+        profiler?.insert("skip step4 (local walk): incremental mode");
+      }
+    } else {
+      localEntityList = await fsLocal.walk();
+      profiler?.insert(`finish step${step} (list local)`);
+    }
 
     step = 5;
     await notifyFunc?.(triggerSource, step);
     await ribboonFunc?.(triggerSource, step);
     await statusBarFunc?.(triggerSource, step, everythingOk);
-    const prevSyncEntityList = await getAllPrevSyncRecordsByVaultAndProfile(
-      db,
-      vaultRandomID,
-      profileID
-    );
+    let prevSyncEntityList: Entity[];
+
+    if (manifestBasedSync && remoteManifest) {
+      // Use remote manifest as prevSync — shared state across devices
+      prevSyncEntityList = manifestToEntities(remoteManifest);
+      console.info(
+        `using remote manifest as prevSync: ${prevSyncEntityList.length} entries`
+      );
+    } else {
+      prevSyncEntityList = await getAllPrevSyncRecordsByVaultAndProfile(
+        db,
+        vaultRandomID,
+        profileID
+      );
+
+      // If no prevSync records for current profile, try fallback to any profile
+      // This handles backend switching (e.g., WebDAV → S3) without data loss
+      if (prevSyncEntityList.length === 0) {
+        const fallback = await getPrevSyncRecordsByVaultAnyProfile(
+          db,
+          vaultRandomID
+        );
+        if (fallback !== null) {
+          console.info(
+            `no prevSync for profile '${profileID}', falling back to '${fallback.profileID}' records (${fallback.entities.length} entities)`
+          );
+          prevSyncEntityList = fallback.entities;
+        }
+      }
+    }
     profiler?.insert(`finish step${step} (prev sync)`);
+
+    // In incremental mode, use the prevSync records as a proxy for local state.
+    // We already pushed all tracked local changes, so local ≡ prevSync.
+    // The three-way comparison will then only pull remote→local changes.
+    if (incrementalSkipLocal) {
+      localEntityList = [...prevSyncEntityList];
+      if (localUnchangedFastPath) {
+        console.info(
+          `local snapshot unchanged: using ${prevSyncEntityList.length} prevSync entities as local proxy`
+        );
+      } else {
+        console.info(
+          `incremental sync: using ${prevSyncEntityList.length} prevSync entities as local proxy`
+        );
+      }
+    }
 
     step = 6;
     await notifyFunc?.(triggerSource, step);
@@ -963,6 +1338,12 @@ export async function syncer(
     );
     profiler?.insert("finish building sync plan");
 
+    const allKeys = Object.getOwnPropertyNames(mixedEntityMappings);
+    const changeKeys = allKeys.filter(
+      (k) => mixedEntityMappings[k].change === true
+    );
+    const hasChanges = changeKeys.length > 0;
+
     await insertSyncPlanRecordByVault(
       db,
       mixedEntityMappings,
@@ -977,6 +1358,18 @@ export async function syncer(
       await notifyFunc?.(triggerSource, step);
       await ribboonFunc?.(triggerSource, step);
       await statusBarFunc?.(triggerSource, step, everythingOk);
+
+      await saveSyncCheckpoint(db, {
+        syncId: `sync-${Date.now()}`,
+        vaultRandomID,
+        profileID,
+        startedAt: Date.now(),
+        totalOps: changeKeys.length,
+        completedOps: 0,
+        lastCompletedKey: "",
+        status: "in_progress",
+      });
+
       await doActualSync(
         mixedEntityMappings,
         fsLocal,
@@ -993,6 +1386,9 @@ export async function syncer(
         callbackSyncProcess
       );
       profiler?.insert(`finish step${step} (actual sync)`);
+
+      // Clear checkpoint after successful sync
+      await clearSyncCheckpoint(db, vaultRandomID);
     } else {
       await notifyFunc?.(triggerSource, step);
       await ribboonFunc?.(triggerSource, step);
@@ -1001,9 +1397,68 @@ export async function syncer(
         `finish step${step} (skip actual sync because of dry run)`
       );
     }
+
+    if (triggerSource !== "dry" && fsEncrypt.innerFs.kind === "s3") {
+      try {
+        if (hasChanges) {
+          const syncId = `sync-${Date.now()}`;
+          const freshEntities = await fsEncrypt.walk();
+          const freshManifest = entitiesToManifest(
+            freshEntities,
+            vaultRandomID,
+            syncId
+          );
+          await fsEncrypt.writeManifest(vaultRandomID, freshManifest);
+          console.info(
+            `wrote fresh remote manifest: ${freshManifest.summary.fileCount} files`
+          );
+          currentManifestStat = await fsEncrypt.statManifest(vaultRandomID);
+        } else {
+          console.info(
+            "no sync changes detected, skipping remote manifest rewrite"
+          );
+        }
+
+        if (currentManifestStat !== null) {
+          await storeRemoteManifestStat(db, vaultRandomID, currentManifestStat);
+        }
+      } catch (e) {
+        console.warn("failed to write or store remote manifest", e);
+      }
+    }
+
+    if (triggerSource !== "dry") {
+      const latestLocalChangeStat =
+        currentLocalChangeStat ?? (await fsLocal.statLocalChanges());
+      if (latestLocalChangeStat !== null) {
+        await storeLocalChangeStat(db, vaultRandomID, latestLocalChangeStat);
+      }
+
+      if (fsEncrypt.innerFs.kind === "s3" && !hasChanges) {
+        console.info(
+          "no sync changes detected, skipping remote snapshot refresh"
+        );
+      } else {
+        const snapshot = await fsEncrypt.checkRemoteChanges();
+        if (snapshot) {
+          await storeRemoteSnapshot(db, vaultRandomID, snapshot);
+        }
+      }
+    }
   } catch (error: any) {
     profiler?.insert("start error branch");
     everythingOk = false;
+    // Mark checkpoint as failed if exists
+    try {
+      const cp = await getSyncCheckpoint(db, vaultRandomID);
+      if (cp !== null && cp.status === "in_progress") {
+        cp.status = "failed";
+        cp.errorMessage = error.message;
+        await saveSyncCheckpoint(db, cp);
+      }
+    } catch {
+      // silently ignore checkpoint errors
+    }
     await errNotifyFunc?.(triggerSource, error as Error);
     profiler?.insert("finish error branch");
   }
@@ -1018,4 +1473,194 @@ export async function syncer(
 
   console.info("ending sync (open-source engine).");
   markIsSyncingFunc(false);
+}
+
+// ── Remote Manifest helpers ──
+
+/**
+ * Convert a RemoteManifest to an Entity[].
+ * This represents the "prevSync" state — what we last knew was synced.
+ */
+function manifestToEntities(manifest: RemoteManifest): Entity[] {
+  const entities: Entity[] = [];
+  const seenFolders = new Set<string>();
+
+  for (const [relPath, entry] of Object.entries(manifest.files)) {
+    entities.push({
+      key: relPath,
+      keyRaw: relPath,
+      mtimeCli: entry.mtime,
+      mtimeSvr: entry.mtime,
+      size: entry.size,
+      sizeRaw: entry.size,
+      etag: entry.etag,
+      synthesizedFolder: false,
+    });
+
+    // Add synthetic folder entries for parent directories
+    const parts = relPath.split("/");
+    for (let i = 0; i < parts.length - 1; i++) {
+      const folderKey = parts.slice(0, i + 1).join("/") + "/";
+      if (!seenFolders.has(folderKey)) {
+        seenFolders.add(folderKey);
+        entities.push({
+          key: folderKey,
+          keyRaw: folderKey,
+          size: 0,
+          sizeRaw: 0,
+          mtimeSvr: entry.mtime,
+          mtimeCli: entry.mtime,
+          synthesizedFolder: true,
+        });
+      }
+    }
+  }
+
+  return entities;
+}
+
+/**
+ * Build a RemoteManifest from the sync plan decisions.
+ * This correctly captures the post-sync remote state by using
+ * the "winning" entity for each key:
+ * - push/keep_local → use the local entity (now on remote)
+ * - pull/keep_remote → use the remote entity (unchanged on remote)
+ * - equal → use whichever entity exists
+ * - delete remote → exclude from manifest
+ */
+function buildManifestFromSyncPlan(
+  mixedMappings: SyncPlanType,
+  vaultRandomID: string,
+  syncId: string
+): RemoteManifest {
+  const files: Record<string, ManifestEntry> = {};
+  let newestMtime = 0;
+
+  for (const key of Object.getOwnPropertyNames(mixedMappings)) {
+    if (key.endsWith("/")) continue; // Skip folder keys
+
+    const m = mixedMappings[key];
+    const decision = m.decision;
+
+    // Skip keys deleted from remote
+    if (
+      decision === "local_is_deleted_thus_also_delete_remote" ||
+      decision === "folder_to_be_deleted_on_remote" ||
+      decision === "folder_to_be_deleted_on_both"
+    ) {
+      continue;
+    }
+
+    // Pick the "winning" entity → this is what's now on remote
+    let winner: Entity | undefined;
+
+    // push or keep_local → local was written to remote
+    if (
+      decision === "local_is_modified_then_push" ||
+      decision === "local_is_created_then_push" ||
+      decision === "conflict_created_then_keep_local" ||
+      decision === "conflict_modified_then_keep_local"
+    ) {
+      winner = m.local;
+    }
+    // pull or keep_remote → remote stays as-is
+    else if (
+      decision === "remote_is_modified_then_pull" ||
+      decision === "remote_is_created_then_pull" ||
+      decision === "conflict_created_then_keep_remote" ||
+      decision === "conflict_modified_then_keep_remote"
+    ) {
+      winner = m.remote;
+    }
+    // equal → pick whichever exists
+    else if (decision === "equal") {
+      winner = m.local ?? m.remote ?? m.prevSync;
+    }
+    // only_history → use prevSync
+    else if (decision === "only_history") {
+      winner = m.prevSync;
+    }
+    // created too large → skip
+    else if (
+      decision === "local_is_created_too_large_then_do_nothing" ||
+      decision === "remote_is_created_too_large_then_do_nothing"
+    ) {
+      continue;
+    }
+    // conflict_created_then_do_nothing → skip
+    else if (decision === "conflict_created_then_do_nothing") {
+      continue;
+    }
+    // Fallback: try local → remote → prevSync
+    else {
+      winner = m.local ?? m.remote ?? m.prevSync;
+    }
+
+    if (!winner) continue;
+
+    const mtime = winner.mtimeCli ?? winner.mtimeSvr ?? 0;
+    if (mtime > newestMtime) newestMtime = mtime;
+
+    files[winner.keyRaw] = {
+      etag: winner.etag ?? "",
+      mtime,
+      size: winner.size ?? winner.sizeRaw ?? 0,
+      encrypted: false,
+    };
+  }
+
+  return {
+    version: 1,
+    vaultRandomID,
+    syncedAt: Date.now(),
+    syncId,
+    files,
+    summary: {
+      fileCount: Object.keys(files).length,
+      newestMtime: newestMtime > 0 ? newestMtime : null,
+    },
+  };
+}
+
+/**
+ * Build a RemoteManifest from a full set of remote entities.
+ * This is called after a successful sync to store the new state.
+ */
+function entitiesToManifest(
+  entities: Entity[],
+  vaultRandomID: string,
+  syncId: string
+): RemoteManifest {
+  const files: Record<string, ManifestEntry> = {};
+  let newestMtime = 0;
+
+  for (const e of entities) {
+    // Skip folders
+    if (e.keyRaw.endsWith("/")) continue;
+    if (e.synthesizedFolder) continue;
+    // Skip internal plugin state files
+    if (e.keyRaw.startsWith("_rs_state/")) continue;
+
+    const mtime = e.mtimeCli ?? e.mtimeSvr ?? 0;
+    if (mtime > newestMtime) newestMtime = mtime;
+
+    files[e.keyRaw] = {
+      etag: e.etag ?? "",
+      mtime,
+      size: e.size ?? e.sizeRaw ?? 0,
+      encrypted: false,
+    };
+  }
+
+  return {
+    version: 1,
+    vaultRandomID,
+    syncedAt: Date.now(),
+    syncId,
+    files,
+    summary: {
+      fileCount: Object.keys(files).length,
+      newestMtime: newestMtime > 0 ? newestMtime : null,
+    },
+  };
 }

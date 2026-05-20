@@ -476,6 +476,50 @@ export const upsertPrevSyncRecordByVaultAndProfile = async (
   );
 };
 
+/**
+ * Search for prevSync records from any profile when the current profile has none.
+ * This allows backend switching (e.g., WebDAV → S3) without data loss.
+ *
+ * @returns The first profileID with records and the entities, or null if none found.
+ */
+export const getPrevSyncRecordsByVaultAnyProfile = async (
+  db: InternalDBs,
+  vaultRandomID: string
+): Promise<{ profileID: string; entities: Entity[] } | null> => {
+  const entitiesByProfile = new Map<string, Entity[]>();
+  const kv: Record<string, Entity | null> =
+    await db.prevSyncRecordsTbl.getItems();
+  for (const key of Object.getOwnPropertyNames(kv)) {
+    if (!key.startsWith(`${vaultRandomID}\t`)) {
+      continue;
+    }
+    const parts = key.split("\t");
+    if (parts.length < 3) {
+      continue;
+    }
+    const profile = parts[1];
+    const val = kv[key];
+    if (val === null) {
+      continue;
+    }
+    if (!entitiesByProfile.has(profile)) {
+      entitiesByProfile.set(profile, []);
+    }
+    entitiesByProfile.get(profile)!.push(val);
+  }
+
+  const sortedProfiles = Array.from(entitiesByProfile.keys()).sort();
+  if (sortedProfiles.length === 0) {
+    return null;
+  }
+
+  const profileID = sortedProfiles[0];
+  return {
+    profileID,
+    entities: entitiesByProfile.get(profileID) ?? [],
+  };
+};
+
 export const clearPrevSyncRecordByVaultAndProfile = async (
   db: InternalDBs,
   vaultRandomID: string,
@@ -698,6 +742,346 @@ export const clearPendingOps = async (
     }
   });
   await db.simpleKVForMiscTbl.removeItems(keysToRemove);
+};
+
+// ── Error History (PRD Better Debugging) ──
+
+export const ERROR_HISTORY_KEY_PREFIX = "error-history";
+const MAX_ERROR_RECORDS = 50;
+
+export interface ErrorHistoryRecord {
+  timestamp: number;
+  category: string;
+  message: string;
+  syncId?: string;
+  recovered?: boolean;
+}
+
+export const addErrorRecord = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  record: ErrorHistoryRecord
+) => {
+  const key = `${vaultRandomID}	${ERROR_HISTORY_KEY_PREFIX}	${record.timestamp}`;
+  await db.simpleKVForMiscTbl.setItem(key, record);
+
+  // Prune old records
+  const keys: string[] = [];
+  await db.simpleKVForMiscTbl.iterate((_value, compoundKey) => {
+    if (
+      typeof compoundKey === "string" &&
+      compoundKey.startsWith(`${vaultRandomID}	${ERROR_HISTORY_KEY_PREFIX}`)
+    ) {
+      keys.push(compoundKey);
+    }
+  });
+  keys.sort();
+  while (keys.length > MAX_ERROR_RECORDS) {
+    const oldKey = keys.shift()!;
+    await db.simpleKVForMiscTbl.removeItem(oldKey);
+  }
+};
+
+export const getErrorRecords = async (
+  db: InternalDBs,
+  vaultRandomID: string
+): Promise<ErrorHistoryRecord[]> => {
+  const results: ErrorHistoryRecord[] = [];
+  await db.simpleKVForMiscTbl.iterate((value, compoundKey) => {
+    if (
+      typeof compoundKey === "string" &&
+      compoundKey.startsWith(`${vaultRandomID}	${ERROR_HISTORY_KEY_PREFIX}`)
+    ) {
+      results.push(value as ErrorHistoryRecord);
+    }
+  });
+  results.sort((a, b) => b.timestamp - a.timestamp); // newest first
+  return results;
+};
+
+export const clearErrorRecords = async (
+  db: InternalDBs,
+  vaultRandomID: string
+) => {
+  const keys: string[] = [];
+  await db.simpleKVForMiscTbl.iterate((_value, compoundKey) => {
+    if (
+      typeof compoundKey === "string" &&
+      compoundKey.startsWith(`${vaultRandomID}	${ERROR_HISTORY_KEY_PREFIX}`)
+    ) {
+      keys.push(compoundKey);
+    }
+  });
+  await db.simpleKVForMiscTbl.removeItems(keys);
+};
+
+export const markErrorRecovered = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  syncId: string
+) => {
+  const errors = await getErrorRecords(db, vaultRandomID);
+  for (const err of errors) {
+    if (err.syncId === syncId) {
+      err.recovered = true;
+      const key = `${vaultRandomID}	${ERROR_HISTORY_KEY_PREFIX}	${err.timestamp}`;
+      await db.simpleKVForMiscTbl.setItem(key, err);
+    }
+  }
+};
+
+// ── Sync Checkpoint (PRD Sync Behavior Rework §3.4) ──
+
+const CHECKPOINT_KEY_PREFIX = "sync-checkpoint";
+
+export interface SyncCheckpoint {
+  syncId: string;
+  vaultRandomID: string;
+  profileID: string;
+  startedAt: number;
+  totalOps: number;
+  completedOps: number;
+  lastCompletedKey: string;
+  status: "in_progress" | "completed" | "failed";
+  errorMessage?: string;
+}
+
+export const saveSyncCheckpoint = async (
+  db: InternalDBs,
+  checkpoint: SyncCheckpoint
+) => {
+  const key = `${checkpoint.vaultRandomID}\t${CHECKPOINT_KEY_PREFIX}`;
+  await db.simpleKVForMiscTbl.setItem(key, checkpoint);
+};
+
+export const getSyncCheckpoint = async (
+  db: InternalDBs,
+  vaultRandomID: string
+): Promise<SyncCheckpoint | null> => {
+  const key = `${vaultRandomID}\t${CHECKPOINT_KEY_PREFIX}`;
+  return (await db.simpleKVForMiscTbl.getItem(key)) as SyncCheckpoint | null;
+};
+
+export const clearSyncCheckpoint = async (
+  db: InternalDBs,
+  vaultRandomID: string
+) => {
+  const key = `${vaultRandomID}\t${CHECKPOINT_KEY_PREFIX}`;
+  await db.simpleKVForMiscTbl.removeItem(key);
+};
+
+/**
+ * Merge a new pending op with existing ones for the same key.
+ * Applies the deduplication rules from PDR-sync-behavior-rework §5.2.
+ *
+ * Rules:
+ *   create + modify  → keep create (subsumes modify)
+ *   create + delete  → remove both (net no-op)
+ *   create + rename  → change create key to new key
+ *   modify + modify  → keep only newest
+ *   modify + delete  → change to delete
+ *   modify + rename  → keep rename (subsumes modify)
+ *   delete + create  → change to modify
+ *   delete + modify  → keep modify (file recreated)
+ *   rename + modify (on newKey) → keep rename, skip modify
+ *   rename + delete (on old key) → ignore delete
+ *   rename + delete (on new key) → remove both (file renamed then deleted)
+ *   rename + rename  → update newKey
+ */
+export const mergeAndAddPendingOp = async (
+  db: InternalDBs,
+  vaultRandomID: string,
+  profileID: string,
+  newOp: PendingOp
+) => {
+  // Load existing ops for the same file key
+  const allOps = await getPendingOps(db, vaultRandomID, profileID);
+  const existingForKey = allOps.filter((op) => op.key === newOp.key);
+
+  // For rename ops, also check if the newKey matches (rename then modify on target)
+  const renameForNewKey = allOps.filter(
+    (op) => op.type === "rename" && op.newKey === newOp.key
+  );
+
+  // ── Special: rename + modify on newKey, rename + delete on newKey ──
+  if (existingForKey.length === 0 && renameForNewKey.length > 0) {
+    if (newOp.type === "modify") {
+      // File was renamed, then modified at new location
+      // Rename already implies the new file exists → keep rename, skip modify
+      return;
+    }
+    if (newOp.type === "delete") {
+      // File was renamed to newKey, then deleted at newKey
+      // Net: file renamed then deleted at destination → remove rename (net no-op)
+      await clearPendingOpsByKey(
+        db,
+        vaultRandomID,
+        profileID,
+        newOp.key,
+        "rename"
+      );
+      return;
+    }
+  }
+
+  if (existingForKey.length === 0) {
+    // No existing ops for this key, just add
+    await addPendingOp(db, vaultRandomID, profileID, newOp);
+    return;
+  }
+
+  // Apply merge rules for each existing op type
+  for (const existing of existingForKey) {
+    const pair = `${existing.type} + ${newOp.type}`;
+
+    switch (pair) {
+      case "create + modify":
+        // Keep create (subsumes modify) — update timestamp
+        await clearPendingOpsByKey(
+          db,
+          vaultRandomID,
+          profileID,
+          newOp.key,
+          "modify"
+        );
+        existing.timestamp = newOp.timestamp;
+        await addPendingOp(db, vaultRandomID, profileID, existing);
+        return;
+
+      case "create + delete":
+        // Remove both (net no-op)
+        await clearPendingOpsByKey(db, vaultRandomID, profileID, newOp.key);
+        return;
+
+      case "create + rename":
+        // Change create key to new key (file was created then renamed)
+        await clearPendingOpsByKey(
+          db,
+          vaultRandomID,
+          profileID,
+          newOp.key,
+          "create"
+        );
+        newOp.type = "create";
+        newOp.key = newOp.newKey!;
+        delete newOp.newKey;
+        await addPendingOp(db, vaultRandomID, profileID, newOp);
+        return;
+
+      case "modify + modify":
+        // Keep only newest
+        await clearPendingOpsByKey(
+          db,
+          vaultRandomID,
+          profileID,
+          newOp.key,
+          "modify"
+        );
+        await addPendingOp(db, vaultRandomID, profileID, newOp);
+        return;
+
+      case "modify + delete":
+        // Change to delete
+        await clearPendingOpsByKey(
+          db,
+          vaultRandomID,
+          profileID,
+          newOp.key,
+          "modify"
+        );
+        await addPendingOp(db, vaultRandomID, profileID, newOp);
+        return;
+
+      case "modify + rename":
+        // Keep rename (subsumes modify)
+        await clearPendingOpsByKey(
+          db,
+          vaultRandomID,
+          profileID,
+          newOp.key,
+          "modify"
+        );
+        await addPendingOp(db, vaultRandomID, profileID, newOp);
+        return;
+
+      case "delete + create":
+        // File deleted then recreated → becomes modify
+        await clearPendingOpsByKey(
+          db,
+          vaultRandomID,
+          profileID,
+          newOp.key,
+          "delete"
+        );
+        newOp.type = "modify";
+        await addPendingOp(db, vaultRandomID, profileID, newOp);
+        return;
+
+      case "delete + modify":
+        // File deleted then modified → becomes modify
+        await clearPendingOpsByKey(
+          db,
+          vaultRandomID,
+          profileID,
+          newOp.key,
+          "delete"
+        );
+        await addPendingOp(db, vaultRandomID, profileID, newOp);
+        return;
+
+      case "rename + rename":
+        // Update newKey and timestamp
+        existing.newKey = newOp.newKey!;
+        existing.timestamp = newOp.timestamp;
+        await clearPendingOpsByKey(
+          db,
+          vaultRandomID,
+          profileID,
+          newOp.key,
+          "rename"
+        );
+        await addPendingOp(db, vaultRandomID, profileID, existing);
+        return;
+
+      case "rename + modify":
+        if (newOp.key === existing.newKey) {
+          // Modify is on the rename target — keep rename, skip modify
+          return;
+        }
+        // Modify is on a different path — add alongside
+        await addPendingOp(db, vaultRandomID, profileID, newOp);
+        return;
+
+      case "rename + delete":
+        if (newOp.key === existing.key) {
+          // Delete is on the old (pre-rename) key — ignore
+          return;
+        }
+        if (newOp.key === existing.newKey) {
+          // File was renamed to newKey, then deleted at newKey
+          // Net: remove both
+          await clearPendingOpsByKey(
+            db,
+            vaultRandomID,
+            profileID,
+            existing.key,
+            "rename"
+          );
+          return;
+        }
+        // Delete is on a different path — add alongside
+        await addPendingOp(db, vaultRandomID, profileID, newOp);
+        return;
+
+      default:
+        // No special rule, just add alongside existing
+        await addPendingOp(db, vaultRandomID, profileID, newOp);
+        return;
+    }
+  }
+
+  // Fallback
+  await addPendingOp(db, vaultRandomID, profileID, newOp);
 };
 
 export const clearPendingOpsByKey = async (

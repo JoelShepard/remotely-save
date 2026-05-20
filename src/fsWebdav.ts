@@ -14,7 +14,7 @@ import type {
 } from "webdav";
 import type { Entity, WebdavConfig } from "./baseTypes";
 import { VALID_REQURL } from "./baseTypesObs";
-import { FakeFs } from "./fsAll";
+import { FakeFs, type RemoteSnapshot } from "./fsAll";
 import { bufferToArrayBuffer, delay, splitFileSizeToChunkRanges } from "./misc";
 
 /**
@@ -965,5 +965,51 @@ export class FakeFsWebdav extends FakeFs {
 
   allowEmptyFile(): boolean {
     return true;
+  }
+
+  async checkRemoteChanges(): Promise<RemoteSnapshot | null> {
+    try {
+      await this._init();
+
+      // Get full directory contents for count + sample
+      const children = (await this.client.getDirectoryContents(
+        `/${this.remoteBaseDir}/`,
+        {
+          deep: true,
+          details: false,
+        }
+      )) as any[];
+
+      const objectCount = children.length;
+      let newestMtime = 0;
+      const newestItems: { key: string; mtime: number }[] = [];
+
+      for (const item of children) {
+        const ms = item.lastmod ? new Date(item.lastmod).getTime() : 0;
+        if (ms > newestMtime) {
+          newestMtime = ms;
+        }
+        newestItems.push({
+          key: item.filename ?? "",
+          mtime: ms,
+        });
+      }
+
+      newestItems.sort((a, b) => b.mtime - a.mtime);
+      const sampleKeys = newestItems
+        .slice(0, 10)
+        .map((x) => stripLeadingPath(x.key))
+        .filter((k) => k !== "" && k !== "/");
+
+      return {
+        objectCount,
+        newestMtime: objectCount > 0 ? newestMtime : null,
+        sampleKeys,
+        capturedAt: Date.now(),
+      };
+    } catch (e) {
+      console.debug(`checkRemoteChanges (WebDAV) failed: ${e}`);
+      return null;
+    }
   }
 }
